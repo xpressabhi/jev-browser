@@ -29,8 +29,8 @@ export function buildElementTable(actions: ObservedAction[]): {
         operations: [],
       };
       for (const k of ["role", "value", "checked", "selected", "expanded"] as const) {
-        if (k in action && (action as Record<string, unknown>)[k] !== undefined) {
-          (element as Record<string, unknown>)[k] = (action as Record<string, unknown>)[k];
+        if (k in action && (action as unknown as Record<string, unknown>)[k] !== undefined) {
+          (element as unknown as Record<string, unknown>)[k] = (action as unknown as Record<string, unknown>)[k];
         }
       }
       if (kind === "select") {

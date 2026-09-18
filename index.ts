@@ -49,7 +49,7 @@ export default Plugin.define({
           };
           try {
             const decision = await choose(page, goal, history ?? []);
-            return JSON.stringify(decision);
+            return { content: JSON.stringify(decision) };
           } catch (err) {
             throw new Error(err instanceof Error ? err.message : String(err));
           }
@@ -74,24 +74,22 @@ export default Plugin.define({
         execute: async (input) => {
           const { context } = input as { context: Record<string, unknown> };
           const { text, meta } = await fieldText(context);
-          return JSON.stringify({ text, model: meta.model });
+          return { content: JSON.stringify({ text, model: meta.model }) };
         },
       });
     });
 
     await ctx.skill.transform((editor) => {
       editor.add({
-        id: "jev-browser",
-        name: "jev-browser",
+        id: "jev-browser" as any,
+        name: "jev-browser" as any,
         description:
           "MANDATORY for any browser work (click, type, navigate, scrape dynamic pages): " +
           "snapshot with chrome MCP (fallback brave), then jev_decide before every page action.",
-        location: `${ctx.location.directory}/skill/SKILL.md`,
+        path: `${ctx.location.directory}/skill/SKILL.md` as any,
+        autoinvoke: true,
         content:
           "Browser work must go through jev-browser: snapshot, jev_decide, then act. See skill file for the loop.",
-      });
-      editor.update("jev-browser", (skill) => {
-        skill.autoinvoke = true;
       });
     });
 
