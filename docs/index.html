@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jev-browser · Jev decides, the harness acts</title>
+<meta name="description" content="An OpenCode plugin that puts TypeSafe Jev in charge of browser decisions: one observed element, one operation per step, executed by your browser MCP.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d6b47'/%3E%3Cpath d='M9 16h11m0 0-4.5-4.5M20 16l-4.5 4.5' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<meta property="og:title" content="jev-browser · Jev decides, the harness acts">
+<meta property="og:description" content="An OpenCode plugin that puts TypeSafe Jev in charge of browser decisions: one observed element, one operation per step.">
+<meta property="og:type" content="website">
+<script>
+(function () {
+  try {
+    var t = localStorage.getItem("jev-docs-theme");
+    document.documentElement.dataset.theme = (t === "light" || t === "dark") ? t : "auto";
+  } catch (e) { /* storage unavailable, keep auto */ }
+})();
+</script>
+<style>
+  :root {
+    --bg: #f6f7f4;
+    --surface: #fdfdfb;
+    --surface-2: #eef0ec;
+    --text: #161a17;
+    --muted: #5a655d;
+    --border: #dee3dc;
+    --accent: #1d6b47;
+    --accent-ink: #ffffff;
+    --code-bg: #f1f3ef;
+    --radius: 10px;
+    --wrap: 1120px;
+    --head-h: 60px;
+    color-scheme: light;
+  }
+  [data-theme="dark"] {
+    --bg: #0e1210;
+    --surface: #141a16;
+    --surface-2: #1a211c;
+    --text: #e6ebe6;
+    --muted: #98a49b;
+    --border: #27312a;
+    --accent: #79d3a2;
+    --accent-ink: #0e1210;
+    --code-bg: #111713;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    [data-theme="auto"] {
+      --bg: #0e1210;
+      --surface: #141a16;
+      --surface-2: #1a211c;
+      --text: #e6ebe6;
+      --muted: #98a49b;
+      --border: #27312a;
+      --accent: #79d3a2;
+      --accent-ink: #0e1210;
+      --code-bg: #111713;
+      color-scheme: dark;
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono, code, pre, .badge, .eyebrow {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .skip {
+    position: absolute; left: -9999px; top: 0; background: var(--surface);
+    border: 1px solid var(--border); padding: 10px 14px; border-radius: var(--radius); z-index: 10;
+  }
+  .skip:focus { left: 12px; top: 12px; }
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 24px; }
+
+  /* Header */
+  .site-head {
+    position: sticky; top: 0; z-index: 5;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    height: var(--head-h);
+  }
+  .head-in { display: flex; align-items: center; gap: 14px; height: var(--head-h); }
+  .brand { color: var(--text); font-weight: 650; letter-spacing: -0.01em; font-size: 15px; }
+  .brand:hover { text-decoration: none; color: var(--accent); }
+  .badge {
+    font-size: 11px; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+  }
+  .nav { display: flex; align-items: center; gap: 18px; margin-left: auto; font-size: 13.5px; }
+  .nav a { color: var(--muted); white-space: nowrap; }
+  .nav a:hover { color: var(--text); text-decoration: none; }
+  .nav a[aria-current="true"] { color: var(--accent); }
+  .theme {
+    display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; background: var(--surface);
+  }
+  .theme button {
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    font: inherit; font-size: 12px; padding: 5px 10px; cursor: pointer;
+  }
+  .theme button + button { border-left: 1px solid var(--border); }
+  .theme button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
+  .theme button:hover { color: var(--text); }
+
+  @media (max-width: 900px) {
+    .head-in { overflow-x: auto; scrollbar-width: none; }
+    .head-in::-webkit-scrollbar { display: none; }
+    .nav { margin-left: 8px; }
+    .theme { margin-left: 8px; }
+  }
+
+  /* Hero */
+  .hero {
+    display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 48px; align-items: start; padding-top: 64px; padding-bottom: 56px;
+  }
+  @media (max-width: 900px) { .hero { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-top: 40px; } }
+  .hero > * { min-width: 0; }
+  .eyebrow {
+    font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 14px;
+  }
+  h1 {
+    margin: 0 0 18px; font-size: clamp(2.1rem, 5vw, 3.3rem);
+    line-height: 1.05; letter-spacing: -0.03em; font-weight: 680;
+    max-width: 18ch;
+  }
+  .lede { margin: 0 0 26px; font-size: 1.06rem; color: var(--muted); max-width: 46ch; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; }
+  .btn {
+    display: inline-block; padding: 10px 16px; border-radius: var(--radius);
+    border: 1px solid var(--border); color: var(--text); background: var(--surface);
+    font-size: 14px; font-weight: 550;
+    transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  }
+  .btn:hover { text-decoration: none; border-color: var(--muted); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover { filter: brightness(1.06); }
+
+  /* Trace card */
+  .trace {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 16px 12px;
+  }
+  .trace-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .trace-rows { list-style: none; margin: 0; padding: 0; }
+  .trace-row {
+    display: grid; grid-template-columns: 20px 82px 1fr auto;
+    gap: 10px; align-items: baseline; padding: 9px 0;
+  }
+  .trace-row + .trace-row { border-top: 1px solid var(--border); }
+  .t-cycle { color: var(--muted); font-size: 12px; }
+  .t-op { font-size: 12px; color: var(--accent); }
+  .t-desc { font-size: 13.5px; color: var(--text); }
+  .t-stats { font-size: 11.5px; color: var(--muted); text-align: right; }
+  @media (max-width: 520px) {
+    .trace-row { grid-template-columns: 20px 1fr auto; }
+    .t-desc { grid-column: 2 / -1; }
+    .t-stats { grid-column: 2 / -1; text-align: left; }
+  }
+  .trace-note { margin: 10px 0 2px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .legend { font-size: 11px; color: var(--muted); margin: 10px 0 0; }
+
+  /* Sections */
+  .section { padding-top: 64px; padding-bottom: 8px; scroll-margin-top: calc(var(--head-h) + 20px); }
+  .section h2 {
+    margin: 0 0 12px; font-size: clamp(1.45rem, 3vw, 1.9rem);
+    letter-spacing: -0.02em; line-height: 1.2; font-weight: 660;
+  }
+  .section-lede { margin: 0 0 28px; color: var(--muted); max-width: 62ch; }
+  h3 { margin: 0; font-size: 1.12rem; letter-spacing: -0.01em; }
+  h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  p { margin: 0 0 14px; }
+  .prose { max-width: 62ch; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 48px; }
+  .split > * { min-width: 0; }
+  @media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+
+  .checks { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+  .checks li {
+    padding: 11px 0 11px 20px; border-bottom: 1px solid var(--border);
+    position: relative; font-size: 14.5px; color: var(--text);
+  }
+  .checks li::before {
+    content: "·"; position: absolute; left: 4px; color: var(--accent); font-weight: 700;
+  }
+
+  /* Flow diagram */
+  .flow {
+    list-style: none; margin: 0 0 32px; padding: 0;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+  }
+  .flow li {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 12px 11px; position: relative; min-height: 92px;
+  }
+  .flow li + li::before {
+    content: "→"; position: absolute; left: -12px; top: 50%; transform: translate(-50%, -50%);
+    color: var(--muted); font-size: 13px;
+  }
+  .f-n { display: block; font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .f-t { display: block; font-weight: 600; font-size: 14px; letter-spacing: -0.01em; }
+  .f-d { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+  @media (max-width: 900px) {
+    .flow { grid-template-columns: minmax(0, 1fr); }
+    .flow li { min-height: 0; }
+    .flow li + li::before { content: "↓"; left: 22px; top: -12px; transform: translate(-50%, 0); }
+  }
+  .flow-exit { font-size: 13px; color: var(--muted); margin: -16px 0 32px; }
+  .flow-exit .mono { color: var(--text); }
+
+  /* Steps */
+  .steps { list-style: none; margin: 0 0 28px; padding: 0; counter-reset: step; }
+  .steps li {
+    counter-increment: step; position: relative; padding: 0 0 18px 44px;
+    border-left: 1px solid var(--border); margin-left: 12px;
+  }
+  .steps li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .steps li::before {
+    content: counter(step);
+    position: absolute; left: -12px; top: 0;
+    width: 24px; height: 24px; border-radius: 999px; background: var(--surface-2);
+    border: 1px solid var(--border); color: var(--text);
+    font-family: ui-monospace, monospace; font-size: 12px;
+    display: grid; place-items: center;
+  }
+  .steps strong { display: block; font-weight: 600; margin-bottom: 3px; }
+  .steps p { margin: 0; color: var(--muted); font-size: 14.5px; max-width: 68ch; }
+
+  /* Code blocks */
+  .code {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; margin: 0 0 22px;
+    min-width: 0; max-width: 100%;
+  }
+  p code, li code { overflow-wrap: anywhere; }
+  .code-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted);
+  }
+  .copy {
+    appearance: none; background: transparent; border: 0; color: var(--muted);
+    font: inherit; font-size: 12px; cursor: pointer; padding: 3px 6px; border-radius: 6px;
+  }
+  .copy:hover { color: var(--text); background: var(--surface-2); }
+  pre {
+    margin: 0; padding: 14px 16px; overflow-x: auto;
+    font-size: 12.5px; line-height: 1.65; color: var(--text);
+  }
+  code { font-size: 0.92em; }
+
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--surface);
+    padding: 14px 18px; border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 14.5px; margin: 0 0 22px;
+  }
+  .callout p { margin: 0; }
+  .callout p + p { margin-top: 8px; }
+
+  /* Tools */
+  .tool { border-top: 1px solid var(--border); padding: 28px 0; }
+  .tool:last-of-type { border-bottom: 1px solid var(--border); }
+  .tool-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+  .tool-head p { margin: 0; color: var(--muted); font-size: 14px; width: 100%; }
+  .tool-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 24px; }
+  .tool-grid > * { min-width: 0; }
+  @media (max-width: 900px) { .tool-grid { grid-template-columns: minmax(0, 1fr); } }
+  .tool-note { font-size: 13.5px; color: var(--muted); margin: 14px 0 0; }
+  .tool-note .mono { color: var(--text); }
+
+  .keys { list-style: none; margin: 0; padding: 0; counter-reset: k; }
+  .keys li {
+    counter-increment: k; padding: 10px 0 10px 34px; position: relative;
+    border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .keys li:last-child { border-bottom: 0; }
+  .keys li::before {
+    content: counter(k); position: absolute; left: 0; top: 12px;
+    font-family: ui-monospace, monospace; font-size: 12px; color: var(--accent);
+  }
+  .keys .mono { color: var(--text); }
+
+  /* Limits */
+  .limit { display: grid; grid-template-columns: 220px 1fr; gap: 28px; padding: 20px 0; border-top: 1px solid var(--border); }
+  .limit:last-of-type { border-bottom: 1px solid var(--border); }
+  .limit h3 { font-size: 15px; }
+  .limit p { margin: 0; color: var(--muted); font-size: 14.5px; max-width: 72ch; }
+  .limit p + p { margin-top: 10px; }
+  .limit > * { min-width: 0; }
+  @media (max-width: 760px) { .limit { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+
+  /* Footer */
+  .site-foot {
+    margin-top: 72px; border-top: 1px solid var(--border);
+    padding: 28px 0 40px; color: var(--muted); font-size: 13.5px;
+  }
+  .foot-in { display: flex; flex-wrap: wrap; gap: 10px 28px; justify-content: space-between; }
+  .site-foot a { color: var(--muted); }
+  .site-foot a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-in">
+    <a class="brand" href="#top">jev-browser</a>
+    <span class="badge">v0.1.0</span>
+    <nav class="nav" aria-label="Sections">
+      <a href="#overview">Overview</a>
+      <a href="#loop">Loop</a>
+      <a href="#tools">Tools</a>
+      <a href="#install">Install</a>
+      <a href="#limits">Limits</a>
+      <a href="https://github.com/xpressabhi/jev-browser">GitHub</a>
+    </nav>
+    <div class="theme" role="group" aria-label="Color theme">
+      <button type="button" data-theme-set="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-theme-set="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-set="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero wrap" id="top">
+    <div>
+      <p class="eyebrow">OpenCode plugin</p>
+      <h1>Jev decides. The harness acts.</h1>
+      <p class="lede">One observed element and one operation per step. Decisions come from TypeSafe Jev; actions come from your browser MCP.</p>
+      <p class="cta">
+        <a class="btn primary" href="https://github.com/xpressabhi/jev-browser">View on GitHub</a>
+        <a class="btn" href="#loop">How the loop works</a>
+      </p>
+    </div>
+
+    <aside class="trace" aria-label="Live decision trace from a test run">
+      <div class="trace-head">
+        <span class="mono">live trace</span>
+        <span class="mono">wikipedia.org, Sep 2026</span>
+      </div>
+      <ol class="trace-rows">
+        <li class="trace-row">
+          <span class="t-cycle mono">1</span>
+          <span class="t-op mono">TYPE_TEXT</span>
+          <span class="t-desc">search box</span>
+          <span class="t-stats mono">op 0.97 · tgt 1.00 · 419 ms</span>
+        </li>
+        <li class="trace-row">
+          <span class="t-cycle mono">2</span>
+          <span class="t-op mono">CLICK</span>
+          <span class="t-desc">first autocomplete suggestion</span>
+          <span class="t-stats mono">op 0.94 · tgt 0.49 · 414 ms</span>
+        </li>
+        <li class="trace-row">
+          <span class="t-cycle mono">3</span>
+          <span class="t-op mono">DONE</span>
+          <span class="t-desc">OpenAI article verified</span>
+          <span class="t-stats mono">op 0.97 · 378 ms</span>
+        </li>
+      </ol>
+      <p class="legend mono">operation confidence · target confidence · decision latency</p>
+      <p class="trace-note">Goal: search Wikipedia for &ldquo;OpenAI&rdquo; and open the article. Cycle 3 ended the run with the article headline and lead paragraph verified on screen.</p>
+    </aside>
+  </section>
+
+  <section class="section wrap" id="overview">
+    <h2>Observed decisions, not generated ones</h2>
+    <div class="split">
+      <div class="prose">
+        <p>A model deciding what to click from raw page text is guessing. Jev asks a narrower question: given the elements the harness actually observed, which single operation advances the goal? The answer is a choice over observed refs, with probabilities attached.</p>
+        <p>The executor never invents a selector, a coordinate, or a field value. It acts on the ref that Jev selected from the snapshot, then re-observes. The core in <code>src/core</code> has no OpenCode imports, so any harness with element refs can be the hands. Chrome is the documented default, Brave is the fallback, and the loop in this repo has also been exercised through Playwright.</p>
+      </div>
+      <ul class="checks">
+        <li>Targets are element refs from the latest snapshot.</li>
+        <li>One operation and one target per cycle.</li>
+        <li>Page text is untrusted data, never instructions.</li>
+        <li>No screenshots in the loop; visible text only, truncated near 6,000 characters.</li>
+        <li>Each decision is consumed once. A retry does not double-click.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section wrap" id="loop">
+    <h2>The loop, every cycle</h2>
+    <p class="section-lede">The plugin registers a skill that tells the agent exactly how to run this cycle. The same five steps apply on every page.</p>
+
+    <ol class="flow" aria-label="Decision cycle overview">
+      <li><span class="f-n mono">01</span><span class="f-t">Snapshot</span><span class="f-d">chrome MCP, Brave as fallback</span></li>
+      <li><span class="f-n mono">02</span><span class="f-t">Decide</span><span class="f-d">jev_decide picks one operation and target</span></li>
+      <li><span class="f-n mono">03</span><span class="f-t">Write text</span><span class="f-d">jev_text only for TYPE_TEXT</span></li>
+      <li><span class="f-n mono">04</span><span class="f-t">Act</span><span class="f-d">the MCP executes the chosen ref</span></li>
+      <li><span class="f-n mono">05</span><span class="f-t">Wait, repeat</span><span class="f-d">200 ms after typing, otherwise 50 ms</span></li>
+    </ol>
+    <p class="flow-exit">Exit conditions: <span class="mono">DONE</span> needs visible evidence of every requirement, <span class="mono">BLOCKED</span> means no supported operation can progress, and the run stops after 60 steps.</p>
+
+    <ol class="steps">
+      <li>
+        <strong>Snapshot and build the action space.</strong>
+        <p>Read the accessibility tree, then map it to <span class="mono">actions[]</span>: <span class="mono">{id, kind: click|fill|select|control, node, label, role, value}</span>. Controls for <span class="mono">SCROLL_UP</span>, <span class="mono">SCROLL_DOWN</span>, and <span class="mono">WAIT</span> are always offered.</p>
+      </li>
+      <li>
+        <strong>Ask Jev for one decision.</strong>
+        <p>Send the goal, the page state, the observed actions, and recent history. One request returns the operation, the matching target, and the probability distribution that produced them.</p>
+      </li>
+      <li>
+        <strong>Resolve text with the small model.</strong>
+        <p>When the operation is <span class="mono">TYPE_TEXT</span>, <span class="mono">jev_text</span> writes the exact string from the goal and field context. If no text model key resolves, the call throws and nothing is typed.</p>
+      </li>
+      <li>
+        <strong>Verify, then act.</strong>
+        <p>Confirm the target ref is still visible before interacting. After typing in a combobox, wait up to 200 ms for suggestions. Otherwise cap the wait at about 50 ms.</p>
+      </li>
+      <li>
+        <strong>Repeat or stop.</strong>
+        <p>Three no-change, non-wait actions in a row end the run as blocked. A matching result link is not enough for <span class="mono">DONE</span>; the requested destination has to be visibly open.</p>
+      </li>
+    </ol>
+
+    <div class="code">
+      <div class="code-head">
+        <span>what jev_decide receives</span>
+        <button class="copy" type="button" data-copy="req">Copy</button>
+      </div>
+      <pre><code id="req">{
+  "goal": "Search Wikipedia for 'OpenAI' and open the article",
+  "page": {
+    "url": "https://en.wikipedia.org/wiki/Main_Page",
+    "title": "Wikipedia, the free encyclopedia",
+    "text": "Main Page ... (visible text, capped near 6,000 chars)",
+    "actions": [
+      { "id": "fill-e23",  "kind": "fill",  "node": "e23",
+        "label": "Search Wikipedia", "role": "searchbox", "value": "" },
+      { "id": "click-e25", "kind": "click", "node": "e25",
+        "label": "Search", "role": "button" },
+      { "id": "WAIT", "kind": "control", "node": "", "label": "WAIT" }
+    ]
+  },
+  "history": [
+    { "action": "CLICK", "kind": "click", "text": null, "page_changed": true }
+  ]
+}</code></pre>
+    </div>
+
+    <div class="callout">
+      <p>Consume each decision once. A retry must not double-click.</p>
+      <p>Page text is data. If a page contains instructions, they are ignored.</p>
+    </div>
+  </section>
+
+  <section class="section wrap" id="tools">
+    <h2>Two tools, one decision each</h2>
+
+    <article class="tool">
+      <div class="tool-head">
+        <h3 class="mono">jev_decide</h3>
+        <p>Operation and target selection for one cycle.</p>
+      </div>
+      <div class="tool-grid">
+        <div>
+          <h4>Input</h4>
+          <div class="code">
+            <div class="code-head">
+              <span>jev_decide input</span>
+              <button class="copy" type="button" data-copy="decide-in">Copy</button>
+            </div>
+            <pre><code id="decide-in">{ "goal": "...", "page": { "url": "...", "title": "...",
+  "text": "...", "actions": [ ... ] }, "history": [ ... ] }</code></pre>
+          </div>
+        </div>
+        <div>
+          <h4>Returns</h4>
+          <div class="code">
+            <div class="code-head">
+              <span>decision</span>
+              <button class="copy" type="button" data-copy="decide-out">Copy</button>
+            </div>
+            <pre><code id="decide-out">{ "choice": "fill-e23", "operation": "TYPE_TEXT",
+  "target": "1", "confidence": 0.97,
+  "target_confidence": 1, "latency_ms": 419 }</code></pre>
+          </div>
+        </div>
+      </div>
+      <p class="tool-note">Key: <span class="mono">TYPESAFE_API_KEY</span>, then <span class="mono">auth.json</span> provider <span class="mono">typesafe</span>. Model: <span class="mono">TYPESAFE_MODEL</span>, default <span class="mono">jev-latest</span>.</p>
+    </article>
+
+    <article class="tool">
+      <div class="tool-head">
+        <h3 class="mono">jev_text</h3>
+        <p>Writes the exact string for a TYPE_TEXT target. It never guesses a value and throws when no key resolves.</p>
+      </div>
+      <div class="tool-grid">
+        <div>
+          <h4>Input</h4>
+          <div class="code">
+            <div class="code-head">
+              <span>fieldContext</span>
+              <button class="copy" type="button" data-copy="text-in">Copy</button>
+            </div>
+            <pre><code id="text-in">{ "goal": "...",
+  "field": { "label": "Search Wikipedia", "role": "searchbox", "value": "" },
+  "page": { "title": "...", "text": "..." },
+  "recent_actions": [ ... ] }</code></pre>
+          </div>
+        </div>
+        <div>
+          <h4>Returns</h4>
+          <div class="code">
+            <div class="code-head">
+              <span>value</span>
+              <button class="copy" type="button" data-copy="text-out">Copy</button>
+            </div>
+            <pre><code id="text-out">{ "text": "OpenAI", "model": "glm-5.3-flash" }</code></pre>
+          </div>
+        </div>
+      </div>
+      <h4 style="margin-top:22px">Key resolution order</h4>
+      <ol class="keys">
+        <li><span class="mono">TEXT_MODEL_API_KEY</span>, with optional <span class="mono">TEXT_MODEL_BASE_URL</span>, <span class="mono">TEXT_MODEL</span>, and <span class="mono">TEXT_MODEL_REASONING</span>.</li>
+        <li><span class="mono">auth.json</span> provider <span class="mono">openrouter</span> or <span class="mono">deepseek</span>.</li>
+        <li><span class="mono">auth.json</span> provider <span class="mono">opencode-go</span>, which is OpenAI compatible, sends <span class="mono">x-opencode-session</span>, and defaults to <span class="mono">glm-5.3-flash</span>.</li>
+      </ol>
+    </article>
+  </section>
+
+  <section class="section wrap" id="install">
+    <h2>Install</h2>
+    <div class="split">
+      <div>
+        <p class="prose">Point OpenCode at a local checkout. The plugin ships as TypeScript with zero runtime dependencies and no build step.</p>
+        <div class="code">
+          <div class="code-head">
+            <span>opencode.jsonc</span>
+            <button class="copy" type="button" data-copy="install-json">Copy</button>
+          </div>
+          <pre><code id="install-json">{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["/path/to/jev-browser"]
+}</code></pre>
+        </div>
+        <p class="prose">Then run <span class="mono">/jev-browse</span> to seed the loop in the current session, or just ask for browser work: the skill is auto-invoked and the system prompt routes page actions through Jev.</p>
+      </div>
+      <div>
+        <h4>What gets registered</h4>
+        <ul class="checks">
+          <li><span class="mono">jev_decide</span> and <span class="mono">jev_text</span> tools in the <span class="mono">jev</span> namespace.</li>
+          <li>The <span class="mono">jev-browser</span> skill, sourced from <span class="mono">skill/SKILL.md</span>.</li>
+          <li>A browser policy in the system prompt: snapshot, decide, then act.</li>
+          <li>The <span class="mono">/jev-browse</span> command.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section wrap" id="limits">
+    <h2>Limits found in live runs</h2>
+    <p class="section-lede">These come from exercising the loop on real pages, not from theory. Know them before you wire the plugin into something new.</p>
+
+    <div class="limit">
+      <h3>255 choices per question</h3>
+      <div>
+        <p>The TypeSafe endpoint rejects oversized action spaces. A Wikipedia main page snapshot produced 622 accessibility nodes and 270 clickable elements; the request failed until the action space was capped.</p>
+        <div class="code">
+          <div class="code-head">
+            <span>TypeSafe response, HTTP 400</span>
+            <button class="copy" type="button" data-copy="limit-400">Copy</button>
+          </div>
+          <pre><code id="limit-400">{ "detail": "Too many choices. Must have at most 255 choices." }</code></pre>
+        </div>
+        <p>The live trace above caps each action kind at 100 candidates. Capping by viewport or by relevance works too. The plugin core does not impose a cap, so the harness or the agent loop has to.</p>
+      </div>
+    </div>
+
+    <div class="limit">
+      <h3>Text needs a key</h3>
+      <div>
+        <p><span class="mono">jev_text</span> throws when no text model profile resolves. Values are never hardcoded or guessed by the executor. If your environment has none of the three key sources, <span class="mono">TYPE_TEXT</span> decisions cannot complete.</p>
+      </div>
+    </div>
+
+    <div class="limit">
+      <h3>One decision per snapshot</h3>
+      <div>
+        <p>A decision is tied to the refs it was chosen from. If the page changed after the snapshot, take a new snapshot and a new decision. Reusing a stale decision risks acting on a ref that no longer exists.</p>
+      </div>
+    </div>
+
+    <div class="limit">
+      <h3>Visible text only</h3>
+      <div>
+        <p>The loop never sees screenshots. It reasons over visible text, capped near 6,000 characters, plus the element table. Pages that hide meaning behind images or canvas are outside what Jev can decide on.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-in">
+    <span>MIT licensed. Port of <a href="https://github.com/browser-use/jev-ultrafast">browser-use/jev-ultrafast</a> (MIT) to a harness-agnostic TypeScript core.</span>
+    <span>
+      <a href="https://github.com/xpressabhi/jev-browser">GitHub</a> ·
+      <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md">README</a> ·
+      <a href="https://github.com/xpressabhi/jev-browser/blob/main/skill/SKILL.md">SKILL.md</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* Theme control */
+  var root = document.documentElement;
+  var buttons = Array.prototype.slice.call(document.querySelectorAll("[data-theme-set]"));
+
+  function systemDark() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function effective(choice) {
+    return choice === "auto" ? (systemDark() ? "dark" : "light") : choice;
+  }
+  function apply(choice) {
+    root.dataset.theme = choice;
+    buttons.forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-theme-set") === choice));
+    });
+  }
+  buttons.forEach(function (b) {
+    b.addEventListener("click", function () {
+      var choice = b.getAttribute("data-theme-set");
+      try { localStorage.setItem("jev-docs-theme", choice); } catch (e) { /* ignore */ }
+      apply(choice);
+    });
+  });
+  var initial = root.dataset.theme === "light" || root.dataset.theme === "dark" ? root.dataset.theme : "auto";
+  apply(initial);
+  if (window.matchMedia) {
+    var mq = window.matchMedia("(prefers-color-scheme: dark)");
+    var onChange = function () { if (root.dataset.theme === "auto") apply("auto"); };
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  }
+
+  /* Copy buttons */
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var target = document.getElementById(btn.getAttribute("data-copy"));
+      if (!target) return;
+      var text = target.innerText;
+      var done = function () {
+        var prev = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = prev; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+      } else {
+        fallback(text, done);
+      }
+    });
+  });
+  function fallback(text, done) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { /* ignore */ }
+    document.body.removeChild(ta);
+  }
+
+  /* Section highlighting in the nav */
+  var links = Array.prototype.slice.call(document.querySelectorAll('.nav a[href^="#"]'));
+  var sections = links
+    .map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); })
+    .filter(Boolean);
+  if ("IntersectionObserver" in window && sections.length) {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        links.forEach(function (a) {
+          var current = a.getAttribute("href") === "#" + entry.target.id;
+          if (current) a.setAttribute("aria-current", "true");
+          else a.removeAttribute("aria-current");
+        });
+      });
+    }, { rootMargin: "-20% 0px -70% 0px", threshold: 0 });
+    sections.forEach(function (s) { observer.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>
