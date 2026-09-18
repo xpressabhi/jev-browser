@@ -1,0 +1,21 @@
+{
+  "name": "jev-browser",
+  "version": "0.1.0",
+  "description": "Jev as the decision step, any browser harness as the hands. Zero runtime dependencies.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./core": "./src/core/index.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "^1.0.0",
+    "typescript": "^5.6.0"
+  }
+}
