@@ -1,3 +1,4 @@
+import { readProviderKey } from "./auth.ts";
 import { TEXT_VALUE } from "./questions.ts";
 import type { HistoryEntry, ObservedAction, PageState } from "./types.ts";
 
@@ -6,6 +7,55 @@ export interface TextEnv {
   TEXT_MODEL_BASE_URL?: string;
   TEXT_MODEL?: string;
   TEXT_MODEL_REASONING?: string;
+  AUTH_PATHS?: string[];
+}
+
+/** Fallback profile: OpenCode Go is OpenAI-compatible and already in auth.json. */
+export interface TextProfile {
+  base: string;
+  model: string;
+  key: string;
+  headers: Record<string, string>;
+  reasoning: Record<string, unknown>;
+}
+
+export const OPENCODE_GO_BASE = "https://opencode.ai/zen/go/v1";
+export const OPENCODE_GO_MODEL = "glm-5.3-flash";
+
+/**
+ * Go requires an identifying user agent and a stable `x-opencode-session`
+ * per conversation (see https://opencode.ai/docs/go/#where-can-i-use-it).
+ * Callers may override per call; the session id stays stable per process.
+ */
+export function opencodeGoProfile(key: string, sessionID: string, model?: string): TextProfile {
+  return {
+    base: OPENCODE_GO_BASE,
+    model: model || OPENCODE_GO_MODEL,
+    key,
+    headers: { "user-agent": "jev-browser/0.1 (coding-agent)", "x-opencode-session": sessionID },
+    reasoning: {},
+  };
+}
+
+export function resolveTextProfile(env: TextEnv, sessionID: string): TextProfile | undefined {
+  if (env.TEXT_MODEL_API_KEY) {
+    const base = (env.TEXT_MODEL_BASE_URL || "https://api.deepseek.com/v1").replace(/\/$/, "");
+    return {
+      base,
+      model: env.TEXT_MODEL || "deepseek-chat",
+      key: env.TEXT_MODEL_API_KEY,
+      headers: {},
+      reasoning: reasoningBody(base, env),
+    };
+  }
+  const compat = readProviderKey(["openrouter", "deepseek"], env.AUTH_PATHS);
+  if (compat) {
+    const base = "https://openrouter.ai/api/v1";
+    return { base, model: "inception/mercury-2.5", key: compat, headers: {}, reasoning: { reasoning: { enabled: false } } };
+  }
+  const go = readProviderKey(["opencode-go"], env.AUTH_PATHS);
+  if (go) return opencodeGoProfile(go, sessionID, env.TEXT_MODEL);
+  return undefined;
 }
 
 export function fieldContext(
@@ -31,7 +81,7 @@ function reasoningBody(base: string, env: TextEnv): Record<string, unknown> {
 /** Small-model text helper. Never guesses: throws when no key or bad JSON. */
 export async function fieldText(
   context: Record<string, unknown>,
-  opts: { env?: TextEnv; fetchFn?: typeof fetch } = {},
+  opts: { env?: TextEnv; fetchFn?: typeof fetch; sessionID?: string } = {},
 ): Promise<{ text: string; meta: { model: string; latency_ms: number; usage?: unknown } }> {
   const env: TextEnv = opts.env ?? {
     TEXT_MODEL_API_KEY: process.env.TEXT_MODEL_API_KEY,
@@ -39,19 +89,21 @@ export async function fieldText(
     TEXT_MODEL: process.env.TEXT_MODEL,
     TEXT_MODEL_REASONING: process.env.TEXT_MODEL_REASONING,
   };
-  const key = env.TEXT_MODEL_API_KEY;
-  if (!key) throw new Error("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.");
-  const base = (env.TEXT_MODEL_BASE_URL || "https://api.deepseek.com/v1").replace(/\/$/, "");
-  const model = env.TEXT_MODEL || "deepseek-chat";
+  const sessionID = opts.sessionID ?? `jev-${process.pid}`;
+  const profile = resolveTextProfile(env, sessionID);
+  if (!profile) {
+    throw new Error("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.");
+  }
+  const { base, model, key, headers, reasoning } = profile;
   const started = Date.now();
   const res = await (opts.fetchFn ?? fetch)(base + "/chat/completions", {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${key}`, ...headers },
     body: JSON.stringify({
       model,
       max_tokens: 1024,
       response_format: { type: "json_object" },
-      ...reasoningBody(base, env),
+      ...reasoning,
       messages: [
         { role: "system", content: TEXT_VALUE },
         { role: "user", content: JSON.stringify(context) },

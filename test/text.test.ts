@@ -25,7 +25,7 @@ describe("fieldText", () => {
     assert.equal(text, "Zurich");
   });
   it("throws without key and on invalid JSON", async () => {
-    await assert.rejects(() => fieldText({}, { env: {} }));
+    await assert.rejects(() => fieldText({}, { env: { AUTH_PATHS: ["/nonexistent/auth.json"] } }));
     const bad: any = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '{"nope":1}' } }] }) });
     await assert.rejects(() => fieldText({}, { env, fetchFn: bad }));
   });

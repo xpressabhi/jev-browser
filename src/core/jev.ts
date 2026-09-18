@@ -1,3 +1,4 @@
+import { readProviderKey } from "./auth.ts";
 import { buildElementTable } from "./elements.ts";
 import { NEXT_ACTION, TARGET } from "./questions.ts";
 import type { HistoryEntry, JevChoice, PageState } from "./types.ts";
@@ -7,6 +8,7 @@ export const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
 export interface JevEnv {
   TYPESAFE_API_KEY?: string;
   TYPESAFE_MODEL?: string;
+  AUTH_PATHS?: string[];
 }
 
 async function postJson(url: string, key: string, body: unknown, fetchFn: typeof fetch = fetch): Promise<any> {
@@ -78,7 +80,7 @@ export function buildRequest(state: PageState, goal: string, history: HistoryEnt
         element: `[${index}] ${a.label}`,
         current_value: a.current_value ?? a.value ?? "",
         ...(["role", "checked", "selected", "expanded"].reduce((acc: Record<string, unknown>, k) => {
-          if (k in a) acc[k] = (a as Record<string, unknown>)[k];
+          if (k in a) acc[k] = (a as unknown as Record<string, unknown>)[k];
           return acc;
         }, {})),
       };
@@ -118,7 +120,7 @@ export async function choose(
     TYPESAFE_API_KEY: process.env.TYPESAFE_API_KEY,
     TYPESAFE_MODEL: process.env.TYPESAFE_MODEL,
   };
-  const key = env.TYPESAFE_API_KEY;
+  const key = env.TYPESAFE_API_KEY ?? readProviderKey(["typesafe"], env.AUTH_PATHS);
   if (!key) throw new Error("TYPESAFE_API_KEY is missing; no action executed.");
   const { body, targets, controls, operations } = buildRequest(state, goal, history);
   (body as Record<string, unknown>).model = env.TYPESAFE_MODEL || "jev-latest";
@@ -132,8 +134,8 @@ export async function choose(
   let choice: string;
   if (operation in targets) {
     targetAnswer = validateChoice(result.answers?.[operation.toLowerCase() + "_target"], targets[operation]);
-    target = targetAnswer.choice;
-    choice = targets[operation][target].id;
+    target = targetAnswer.choice as string;
+    choice = targets[operation][target as string].id;
     probabilities = Object.fromEntries(
       Object.entries(targets[operation]).map(([index, a]) => [a.id, targetAnswer.probabilities[index]]),
     );

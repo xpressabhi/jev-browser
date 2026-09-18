@@ -22,12 +22,17 @@ operation and one observed target per cycle; a small model writes text only for
 ## Tools
 
 - `jev_decide` — `{goal, page {url,title,text,actions[]}, history[]}` → Jev decision.
-  Needs `TYPESAFE_API_KEY` (you have it). Optional `TYPESAFE_MODEL` (default `jev-latest`).
+  Key resolution: `TYPESAFE_API_KEY` env → OpenCode `auth.json` (`typesafe`). Optional
+  `TYPESAFE_MODEL` (default `jev-latest`).
 - `jev_text` — `fieldContext` → `{text}` via small OpenAI-compatible model.
-  Needs `TEXT_MODEL_API_KEY`. Defaults: `TEXT_MODEL_BASE_URL=https://api.deepseek.com/v1`,
-  `TEXT_MODEL=deepseek-chat`. OpenRouter example from upstream:
-  `TEXT_MODEL_BASE_URL=https://openrouter.ai/api/v1`, `TEXT_MODEL=inception/mercury-2.5`,
-  `TEXT_MODEL_REASONING=none`.
+  Key resolution, in order:
+  1. `TEXT_MODEL_API_KEY` env (+ `TEXT_MODEL_BASE_URL`, `TEXT_MODEL`, `TEXT_MODEL_REASONING`)
+  2. `auth.json` `openrouter` or `deepseek`
+  3. `auth.json` `opencode-go` (OpenAI-compatible; sends `x-opencode-session`, defaults `glm-5.3-flash`)
+  Throws when none available — never guesses.
+
+Upstream OpenRouter example: `TEXT_MODEL_BASE_URL=https://openrouter.ai/api/v1`,
+`TEXT_MODEL=inception/mercury-2.5`, `TEXT_MODEL_REASONING=none`.
 
 ## Loop
 

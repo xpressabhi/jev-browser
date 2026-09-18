@@ -61,8 +61,10 @@ describe("choose", () => {
   });
 
   it("throws without key and on provider HTTP error", async () => {
-    await assert.rejects(() => choose(page, "g", [], { env: {} }));
+    await assert.rejects(() => choose(page, "g", [], { env: { AUTH_PATHS: ["/nonexistent/auth.json"] } }));
     const bad: any = async () => ({ ok: false, status: 500, json: async () => ({}) });
-    await assert.rejects(() => choose(page, "g", [], { env: { TYPESAFE_API_KEY: "k" }, fetchFn: bad }));
+    await assert.rejects(() =>
+      choose(page, "g", [], { env: { TYPESAFE_API_KEY: "k" }, fetchFn: bad }),
+    );
   });
 });
