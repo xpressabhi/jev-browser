@@ -1,62 +1,62 @@
 import type { ElementEntry, ObservedAction } from "./types.ts";
 
-// Port of jev_ultrafast/model.py action_space (MIT).
-// One index per observed node; each operation gets its own valid target choices.
+// Builds the element table for one page observation: one indexed element per
+// DOM node, a target list per operation, and the pseudo-controls that are
+// offered on every cycle.
 export function buildElementTable(actions: ObservedAction[]): {
   elements: ElementEntry[];
   targets: Record<string, Record<string, ObservedAction>>;
   controls: Record<string, ObservedAction>;
 } {
+  const OPERATION_BY_KIND: Record<string, string> = { click: "CLICK", fill: "TYPE_TEXT", select: "SELECT" };
   const elements: ElementEntry[] = [];
-  const indices = new Map<string, string>();
+  const slots = new Map<string, ElementEntry>();
   const targets: Record<string, Record<string, ObservedAction>> = {};
   const controls: Record<string, ObservedAction> = {};
-  const operations: Record<string, string> = { click: "CLICK", fill: "TYPE_TEXT", select: "SELECT" };
+
+  const slotFor = (action: ObservedAction): ElementEntry => {
+    const known = slots.get(action.node);
+    if (known) return known;
+    const slot: ElementEntry = {
+      index: String(elements.length + 1),
+      label: action.label.split(" → ")[0],
+      operations: [],
+    };
+    for (const key of ["role", "value", "checked", "selected", "expanded"] as const) {
+      const value = action[key];
+      if (value !== undefined) (slot as unknown as Record<string, unknown>)[key] = value;
+    }
+    if (action.kind === "select") {
+      slot.value = action.current_value ?? "";
+      slot.options = [];
+    }
+    slots.set(action.node, slot);
+    elements.push(slot);
+    return slot;
+  };
 
   for (const action of actions) {
-    const kind = action.kind;
-    if (!(kind in operations)) {
+    const operation = OPERATION_BY_KIND[action.kind];
+    if (!operation) {
       controls[action.id.toUpperCase()] = action;
       continue;
     }
-    const node = action.node;
-    if (!indices.has(node)) {
-      const index = String(elements.length + 1);
-      indices.set(node, index);
-      const element: ElementEntry = {
-        index,
-        label: action.label.split(" → ")[0],
-        operations: [],
-      };
-      for (const k of ["role", "value", "checked", "selected", "expanded"] as const) {
-        if (k in action && (action as unknown as Record<string, unknown>)[k] !== undefined) {
-          (element as unknown as Record<string, unknown>)[k] = (action as unknown as Record<string, unknown>)[k];
-        }
-      }
-      if (kind === "select") {
-        element.value = action.current_value ?? "";
-        element.options = [];
-      }
-      elements.push(element);
+    const slot = slotFor(action);
+    if (!slot.operations.includes(operation)) slot.operations.push(operation);
+    let targetKey = slot.index;
+    if (action.kind === "select") {
+      targetKey = `${slot.index}:${(slot.options?.length ?? 0) + 1}`;
+      slot.options!.push({ index: targetKey, label: action.label, value: action.value ?? "" });
     }
-    const index = indices.get(node)!;
-    const operation = operations[kind];
     const group = (targets[operation] ??= {});
-    const element = elements[Number(index) - 1];
-    if (!element.operations.includes(operation)) element.operations.push(operation);
-    let target = index;
-    if (kind === "select") {
-      target = `${index}:${(element.options?.length ?? 0) + 1}`;
-      element.options!.push({ index: target, label: action.label, value: action.value ?? "" });
-    }
-    group[target] = action;
+    group[targetKey] = action;
   }
+
   return { elements, targets, controls };
 }
 
-// Map a generic accessibility snapshot (chrome-devtools-mcp style) to ObservedAction[].
-// Input nodes: { ref, role, name, value?, checked?, selected?, expanded?, disabled? }.
-// Pure function — no MCP imports, fully unit-testable.
+// Maps a generic accessibility snapshot (chrome-devtools-mcp style) to the
+// observed action list Jev expects. Pure function, easy to test.
 export interface A11yNode {
   ref: string;
   role: string;
@@ -68,7 +68,7 @@ export interface A11yNode {
   disabled?: boolean;
 }
 
-const CLICK_ROLES = new Set([
+const CLICKABLE_ROLES = new Set([
   "button",
   "link",
   "menuitem",
@@ -81,47 +81,30 @@ const CLICK_ROLES = new Set([
   "option",
 ]);
 
-const FILL_ROLES = new Set(["textbox", "searchbox", "combobox", "spinbutton"]);
-
-const SELECT_ROLES = new Set(["combobox", "listbox"]);
+const EDITABLE_ROLES = new Set(["textbox", "searchbox", "combobox", "spinbutton"]);
 
 export function a11yToActions(nodes: A11yNode[]): ObservedAction[] {
   const actions: ObservedAction[] = [];
-  for (const n of nodes) {
-    if (n.disabled) continue;
-    const label = (n.name || n.role || n.ref).trim();
+  for (const node of nodes) {
+    if (node.disabled) continue;
+    const label = (node.name || node.role || node.ref).trim();
     if (!label) continue;
-    const role = n.role.toLowerCase();
-    if (FILL_ROLES.has(role) && role !== "combobox") {
+    const role = node.role.toLowerCase();
+    if (EDITABLE_ROLES.has(role)) {
       actions.push({
-        id: `fill-${n.ref}`,
+        id: `fill-${node.ref}`,
         kind: "fill",
-        node: n.ref,
-        label: `${label} · ${n.value ?? "empty"}`,
-        role: n.role,
-        value: n.value ?? "",
+        node: node.ref,
+        label: `${label} · ${node.value ?? "empty"}`,
+        role: node.role,
+        value: node.value ?? "",
       });
-    } else if (role === "combobox") {
-      // Combobox is both fillable and (when options observed) selectable.
-      actions.push({
-        id: `fill-${n.ref}`,
-        kind: "fill",
-        node: n.ref,
-        label: `${label} · ${n.value ?? "empty"}`,
-        role: n.role,
-        value: n.value ?? "",
-      });
-      void SELECT_ROLES;
-    } else if (CLICK_ROLES.has(role) || role === "generic") {
-      if (role === "generic" && !/button|link|tab/i.test(n.role)) continue;
-      actions.push({ id: `click-${n.ref}`, kind: "click", node: n.ref, label, role: n.role });
-    } else if (role === "option") {
-      actions.push({ id: `click-${n.ref}`, kind: "click", node: n.ref, label, role: n.role });
+    } else if (CLICKABLE_ROLES.has(role)) {
+      actions.push({ id: `click-${node.ref}`, kind: "click", node: node.ref, label, role: node.role });
     }
   }
-  // Pseudo-controls always offered (match jev-ultrafast control space).
-  for (const c of ["SCROLL_UP", "SCROLL_DOWN", "WAIT"]) {
-    actions.push({ id: c, kind: "control", node: "", label: c });
+  for (const control of ["SCROLL_UP", "SCROLL_DOWN", "WAIT"]) {
+    actions.push({ id: control, kind: "control", node: "", label: control });
   }
   return actions;
 }

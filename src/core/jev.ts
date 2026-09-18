@@ -5,109 +5,116 @@ import type { HistoryEntry, JevChoice, PageState } from "./types.ts";
 
 export const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
 
+const DEFAULT_MODEL = "jev-latest";
+const RETRYABLE_STATUSES = new Set([429, 503, 529]);
+const OPERATION_HELP: Record<string, string> = {
+  CLICK: "Click an observed element: button, link, menu item, autocomplete suggestion, or calendar day.",
+  TYPE_TEXT: "Type into or replace the value of an editable field. A small model supplies the text from the goal.",
+  SELECT: "Choose one of the observed dropdown values.",
+};
+const DONE_CRITERION = "Every requirement is visibly satisfied.";
+const BLOCKED_CRITERION = "No supported operation can progress.";
+
 export interface JevEnv {
   TYPESAFE_API_KEY?: string;
   TYPESAFE_MODEL?: string;
   AUTH_PATHS?: string[];
 }
 
-async function postJson(url: string, key: string, body: unknown, fetchFn: typeof fetch = fetch): Promise<any> {
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    let res: Response;
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function request(key: string, body: unknown, fetchFn: typeof fetch): Promise<any> {
+  let failure: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let response: Response;
     try {
-      res = await fetchFn(url, {
+      response = await fetchFn(TYPESAFE_URL, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
         body: JSON.stringify(body),
       });
-    } catch (e) {
-      throw new Error("Model connection failed; no action executed.");
+    } catch {
+      throw new Error("Could not reach the model provider; no action executed.");
     }
-    if ((res.status === 429 || res.status === 529 || res.status === 503) && attempt < 2) {
-      await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+    if (RETRYABLE_STATUSES.has(response.status) && attempt < 2) {
+      await pause(500 * 2 ** attempt);
       continue;
     }
-    if (!res.ok) {
-      lastErr = new Error(`Model provider returned HTTP ${res.status}; no action executed.`);
+    if (!response.ok) {
+      failure = new Error(`Model provider answered HTTP ${response.status}; no action executed.`);
       break;
     }
-    return res.json();
+    return response.json();
   }
-  throw lastErr;
+  throw failure ?? new Error("Model provider unavailable; no action executed.");
 }
 
+// A choice is only accepted when every offered index has a probability, the
+// distribution sums to one, and the named choice is an argmax of it.
 export function validateChoice(answer: any, ids: Record<string, unknown> | string[]): any {
-  const keys = Array.isArray(ids) ? ids : Object.keys(ids);
-  const idSet = new Set(keys);
+  const allowed = new Set(Array.isArray(ids) ? ids : Object.keys(ids));
   try {
-    const probs = answer.probabilities;
-    const nums = [...Object.values(probs) as number[], answer.confidence];
-    const valid =
-      idSet.has(answer.choice) &&
-      new Set(Object.keys(probs)).size === idSet.size &&
-      [...Object.keys(probs)].every((k) => idSet.has(k)) &&
-      nums.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1) &&
-      Math.abs((Object.values(probs) as number[]).reduce((a, b) => a + b, 0) - 1) < 0.02 &&
-      (probs[answer.choice] as number) >= Math.max(...(Object.values(probs) as number[])) - 1e-6;
-    if (!valid) throw new Error("invalid");
+    const distribution = answer?.probabilities as Record<string, number>;
+    const named = Object.keys(distribution);
+    const numbers = [...Object.values(distribution), answer?.confidence as number];
+    const isProbability = (n: number) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1;
+    if (named.length !== allowed.size || !named.every((name) => allowed.has(name))) throw new Error("keys");
+    if (!allowed.has(answer?.choice)) throw new Error("choice");
+    if (!numbers.every(isProbability)) throw new Error("numbers");
+    const total = (Object.values(distribution) as number[]).reduce((a, b) => a + b, 0);
+    if (Math.abs(total - 1) >= 0.02) throw new Error("sum");
+    const highest = Math.max(...(Object.values(distribution) as number[]));
+    if ((distribution[answer.choice] as number) < highest - 1e-6) throw new Error("argmax");
+    return answer;
   } catch {
-    throw new Error("Invalid TypeSafe response; no action executed.");
+    throw new Error("TypeSafe returned a malformed choice; no action executed.");
   }
-  return answer;
 }
 
 export function buildRequest(state: PageState, goal: string, history: HistoryEntry[]) {
   const { elements, targets, controls } = buildElementTable(state.actions);
-  const labels: Record<string, string> = {
-    CLICK: "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
-    TYPE_TEXT: "Enter or replace text in an editable field. A small LLM will supply the value from the goal.",
-    SELECT: "Select an observed dropdown value.",
-  };
+
   const operations: Record<string, string> = {};
-  for (const key of Object.keys(targets)) operations[key] = labels[key];
-  for (const [key, value] of Object.entries(controls)) operations[key] = value.label;
-  operations.DONE = "Every requirement is visibly satisfied.";
-  operations.BLOCKED = "No supported operation can progress.";
+  for (const name of Object.keys(targets)) operations[name] = OPERATION_HELP[name] ?? `Perform ${name}.`;
+  for (const [name, control] of Object.entries(controls)) operations[name] = control.label;
+  operations.DONE = DONE_CRITERION;
+  operations.BLOCKED = BLOCKED_CRITERION;
 
   const questions: Record<string, unknown> = {
     operation: { type: "choice", criteria: operations, instructions: { goal, rules: NEXT_ACTION } },
   };
   for (const [operation, candidates] of Object.entries(targets)) {
     const criteria: Record<string, unknown> = {};
-    for (const [index, a] of Object.entries(candidates)) {
-      criteria[index] = {
-        element: `[${index}] ${a.label}`,
-        current_value: a.current_value ?? a.value ?? "",
-        ...(["role", "checked", "selected", "expanded"].reduce((acc: Record<string, unknown>, k) => {
-          if (k in a) acc[k] = (a as unknown as Record<string, unknown>)[k];
-          return acc;
-        }, {})),
+    for (const [index, action] of Object.entries(candidates)) {
+      const entry: Record<string, unknown> = {
+        element: `[${index}] ${action.label}`,
+        current_value: action.current_value ?? action.value ?? "",
       };
+      for (const key of ["role", "checked", "selected", "expanded"] as const) {
+        if (action[key] !== undefined) entry[key] = action[key];
+      }
+      criteria[index] = entry;
     }
-    questions[operation.toLowerCase() + "_target"] = {
+    questions[`${operation.toLowerCase()}_target`] = {
       type: "choice",
       criteria,
       instructions: { goal, operation, rules: [NEXT_ACTION, TARGET] },
     };
   }
-  return {
-    body: {
-      model: "jev-latest",
-      state: {
-        page: { url: state.url, title: state.title, text: state.text },
-        elements,
-        recent_actions: history
-          .slice(-10)
-          .map((h) => ({ action: h.action, kind: h.kind, text: h.text, page_changed: h.page_changed })),
-      },
-      questions,
+
+  const body = {
+    model: DEFAULT_MODEL,
+    state: {
+      page: { url: state.url, title: state.title, text: state.text },
+      elements,
+      recent_actions: history
+        .slice(-10)
+        .map((h) => ({ action: h.action, kind: h.kind, text: h.text, page_changed: h.page_changed })),
     },
-    elements,
-    targets,
-    controls,
-    operations,
+    questions,
   };
+
+  return { body, elements, targets, controls, operations };
 }
 
 export async function choose(
@@ -121,28 +128,34 @@ export async function choose(
     TYPESAFE_MODEL: process.env.TYPESAFE_MODEL,
   };
   const key = env.TYPESAFE_API_KEY ?? readProviderKey(["typesafe"], env.AUTH_PATHS);
-  if (!key) throw new Error("TYPESAFE_API_KEY is missing; no action executed.");
+  if (!key) throw new Error("No TypeSafe key available; no action executed.");
+
   const { body, targets, controls, operations } = buildRequest(state, goal, history);
-  (body as Record<string, unknown>).model = env.TYPESAFE_MODEL || "jev-latest";
+  (body as Record<string, unknown>).model = env.TYPESAFE_MODEL || DEFAULT_MODEL;
+
   const started = Date.now();
-  const result = await postJson(TYPESAFE_URL, key, body, opts.fetchFn);
+  const result = await request(key, body, opts.fetchFn ?? fetch);
   const operationAnswer = validateChoice(result.answers?.operation, operations);
-  const operation: string = operationAnswer.choice;
+  const operation = operationAnswer.choice as string;
+
+  const candidates = targets[operation];
   let target: string | null = null;
   let targetAnswer: any = null;
   let probabilities: Record<string, number> = {};
   let choice: string;
-  if (operation in targets) {
-    targetAnswer = validateChoice(result.answers?.[operation.toLowerCase() + "_target"], targets[operation]);
+
+  if (candidates) {
+    targetAnswer = validateChoice(result.answers?.[`${operation.toLowerCase()}_target`], candidates);
     target = targetAnswer.choice as string;
-    choice = targets[operation][target as string].id;
-    probabilities = Object.fromEntries(
-      Object.entries(targets[operation]).map(([index, a]) => [a.id, targetAnswer.probabilities[index]]),
-    );
+    choice = candidates[target].id;
+    for (const [index, action] of Object.entries(candidates)) {
+      probabilities[action.id] = targetAnswer.probabilities[index];
+    }
   } else {
     choice = operation in controls ? controls[operation].id : operation;
-    probabilities = { [choice]: operationAnswer.probabilities[operation] };
+    probabilities[choice] = operationAnswer.probabilities[operation];
   }
+
   return {
     choice,
     operation,

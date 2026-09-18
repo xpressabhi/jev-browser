@@ -10,7 +10,6 @@ export interface TextEnv {
   AUTH_PATHS?: string[];
 }
 
-/** Fallback profile: OpenCode Go is OpenAI-compatible and already in auth.json. */
 export interface TextProfile {
   base: string;
   model: string;
@@ -19,13 +18,13 @@ export interface TextProfile {
   reasoning: Record<string, unknown>;
 }
 
+/** Fallback profile: OpenCode Go is OpenAI compatible and already in auth.json. */
 export const OPENCODE_GO_BASE = "https://opencode.ai/zen/go/v1";
 export const OPENCODE_GO_MODEL = "glm-5.3-flash";
 
 /**
- * Go requires an identifying user agent and a stable `x-opencode-session`
- * per conversation (see https://opencode.ai/docs/go/#where-can-i-use-it).
- * Callers may override per call; the session id stays stable per process.
+ * Go expects an identifying user agent and a stable session header per
+ * conversation (see https://opencode.ai/docs/go/#where-can-i-use-it).
  */
 export function opencodeGoProfile(key: string, sessionID: string, model?: string): TextProfile {
   return {
@@ -37,21 +36,34 @@ export function opencodeGoProfile(key: string, sessionID: string, model?: string
   };
 }
 
+function reasoningFor(base: string, env: TextEnv): Record<string, unknown> {
+  if (env.TEXT_MODEL_REASONING === "none") return { reasoning: { enabled: false } };
+  if (base.includes("api.deepseek.com/")) return { thinking: { type: "disabled" } };
+  return { reasoning: { effort: "low" } };
+}
+
+function fromEnvironment(env: TextEnv): TextProfile {
+  const base = (env.TEXT_MODEL_BASE_URL || "https://api.deepseek.com/v1").replace(/\/$/, "");
+  return {
+    base,
+    model: env.TEXT_MODEL || "deepseek-chat",
+    key: env.TEXT_MODEL_API_KEY as string,
+    headers: {},
+    reasoning: reasoningFor(base, env),
+  };
+}
+
 export function resolveTextProfile(env: TextEnv, sessionID: string): TextProfile | undefined {
-  if (env.TEXT_MODEL_API_KEY) {
-    const base = (env.TEXT_MODEL_BASE_URL || "https://api.deepseek.com/v1").replace(/\/$/, "");
+  if (env.TEXT_MODEL_API_KEY) return fromEnvironment(env);
+  const shared = readProviderKey(["openrouter", "deepseek"], env.AUTH_PATHS);
+  if (shared) {
     return {
-      base,
-      model: env.TEXT_MODEL || "deepseek-chat",
-      key: env.TEXT_MODEL_API_KEY,
+      base: "https://openrouter.ai/api/v1",
+      model: "inception/mercury-2.5",
+      key: shared,
       headers: {},
-      reasoning: reasoningBody(base, env),
+      reasoning: { reasoning: { enabled: false } },
     };
-  }
-  const compat = readProviderKey(["openrouter", "deepseek"], env.AUTH_PATHS);
-  if (compat) {
-    const base = "https://openrouter.ai/api/v1";
-    return { base, model: "inception/mercury-2.5", key: compat, headers: {}, reasoning: { reasoning: { enabled: false } } };
   }
   const go = readProviderKey(["opencode-go"], env.AUTH_PATHS);
   if (go) return opencodeGoProfile(go, sessionID, env.TEXT_MODEL);
@@ -72,10 +84,15 @@ export function fieldContext(
   };
 }
 
-function reasoningBody(base: string, env: TextEnv): Record<string, unknown> {
-  if (env.TEXT_MODEL_REASONING === "none") return { reasoning: { enabled: false } };
-  if (base.includes("api.deepseek.com/")) return { thinking: { type: "disabled" } };
-  return { reasoning: { effort: "low" } };
+function readReply(result: any): string {
+  const content = result?.choices?.[0]?.message?.content;
+  const output = JSON.parse(content);
+  if (typeof output !== "object" || output === null) throw new Error("shape");
+  const keys = Object.keys(output);
+  const value = output.text;
+  if (keys.length !== 1 || keys[0] !== "text") throw new Error("keys");
+  if (typeof value !== "string" || !value.trim() || value.length > 2000) throw new Error("value");
+  return value;
 }
 
 /** Small-model text helper. Never guesses: throws when no key or bad JSON. */
@@ -91,36 +108,37 @@ export async function fieldText(
   };
   const sessionID = opts.sessionID ?? `jev-${process.pid}`;
   const profile = resolveTextProfile(env, sessionID);
-  if (!profile) {
-    throw new Error("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.");
-  }
-  const { base, model, key, headers, reasoning } = profile;
+  if (!profile) throw new Error("No text-model key available; nothing was typed.");
+
   const started = Date.now();
-  const res = await (opts.fetchFn ?? fetch)(base + "/chat/completions", {
+  const response = await (opts.fetchFn ?? fetch)(profile.base + "/chat/completions", {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}`, ...headers },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${profile.key}`,
+      ...profile.headers,
+    },
     body: JSON.stringify({
-      model,
+      model: profile.model,
       max_tokens: 1024,
       response_format: { type: "json_object" },
-      ...reasoning,
+      ...profile.reasoning,
       messages: [
         { role: "system", content: TEXT_VALUE },
         { role: "user", content: JSON.stringify(context) },
       ],
     }),
   });
-  if (!res.ok) throw new Error(`Text helper returned HTTP ${res.status}; nothing typed.`);
-  const result: any = await res.json();
+  if (!response.ok) throw new Error(`Text model answered HTTP ${response.status}; nothing was typed.`);
+
+  const result: any = await response.json();
   try {
-    const output = JSON.parse(result.choices[0].message.content);
-    const value = output.text;
-    if (Object.keys(output).length !== 1 || typeof value !== "string" || !value.trim() || value.length > 2000) {
-      throw new Error("bad");
-    }
-    return { text: value, meta: { model, latency_ms: Date.now() - started, usage: result.usage } };
+    return {
+      text: readReply(result),
+      meta: { model: profile.model, latency_ms: Date.now() - started, usage: result.usage },
+    };
   } catch {
-    throw new Error("Text helper returned no valid field value; nothing typed.");
+    throw new Error("Text model returned no usable field value; nothing was typed.");
   }
 }
 

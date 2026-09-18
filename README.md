@@ -2,10 +2,10 @@
 
 Jev as the decision step, any browser harness as the hands. Zero runtime dependencies.
 
-Port of the `browser-use/jev-ultrafast` policy (MIT) to a harness-agnostic
-TypeScript core + thin OpenCode adapter. Jev (`TypeSafe System One`) picks one
-operation and one observed target per cycle; a small model writes text only for
-`TYPE_TEXT`. No screenshots in the loop, visible text only.
+A harness-agnostic TypeScript core with a thin OpenCode adapter. Jev
+(`TypeSafe System One`) picks one operation and one observed target per cycle;
+a small model writes text only for `TYPE_TEXT`. No screenshots in the loop,
+visible text only.
 
 ## Install (local path)
 
