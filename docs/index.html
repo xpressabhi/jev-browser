@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>jev-browser · Jev decides, the harness acts</title>
-<meta name="description" content="An OpenCode plugin that puts TypeSafe Jev in charge of browser decisions: one observed element, one operation per step, executed by your browser MCP.">
+<meta name="description" content="An OpenCode plugin that puts TypeSafe Jev in charge of browser decisions: one observed element and one operation per step, executed by your browser MCP. Text-only payloads keep cycles fast and bills small.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d6b47'/%3E%3Cpath d='M9 16h11m0 0-4.5-4.5M20 16l-4.5 4.5' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <meta property="og:title" content="jev-browser · Jev decides, the harness acts">
-<meta property="og:description" content="An OpenCode plugin that puts TypeSafe Jev in charge of browser decisions: one observed element, one operation per step.">
+<meta property="og:description" content="An OpenCode plugin that puts TypeSafe Jev in charge of browser decisions: one observed element and one operation per step, with text-only payloads that keep cycles fast and bills small.">
 <meta property="og:type" content="website">
 <script>
 (function () {
@@ -209,6 +209,17 @@
     content: "·"; position: absolute; left: 4px; color: var(--accent); font-weight: 700;
   }
 
+  /* Stats strip (benefits) */
+  .stats {
+    list-style: none; margin: 0 0 36px; padding: 0;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 22px;
+  }
+  .stats li { border-top: 1px solid var(--border); padding: 14px 0 12px; min-width: 0; }
+  .s-n { display: block; font-size: 1.3rem; line-height: 1.2; letter-spacing: -0.02em; color: var(--text); }
+  .s-l { display: block; font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.45; }
+  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 420px) { .stats { grid-template-columns: minmax(0, 1fr); } }
+
   /* Flow diagram */
   .flow {
     list-style: none; margin: 0 0 32px; padding: 0;
@@ -304,14 +315,14 @@
   }
   .keys .mono { color: var(--text); }
 
-  /* Limits */
-  .limit { display: grid; grid-template-columns: 220px 1fr; gap: 28px; padding: 20px 0; border-top: 1px solid var(--border); }
-  .limit:last-of-type { border-bottom: 1px solid var(--border); }
-  .limit h3 { font-size: 15px; }
-  .limit p { margin: 0; color: var(--muted); font-size: 14.5px; max-width: 72ch; }
-  .limit p + p { margin-top: 10px; }
-  .limit > * { min-width: 0; }
-  @media (max-width: 760px) { .limit { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+  /* Limits and benefit rows share the same two-column layout */
+  .limit, .benefit { display: grid; grid-template-columns: 220px 1fr; gap: 28px; padding: 20px 0; border-top: 1px solid var(--border); }
+  .limit:last-of-type, .benefit:last-of-type { border-bottom: 1px solid var(--border); }
+  .limit h3, .benefit h3 { font-size: 15px; }
+  .limit p, .benefit p { margin: 0; color: var(--muted); font-size: 14.5px; max-width: 72ch; }
+  .limit p + p, .benefit p + p { margin-top: 10px; }
+  .limit > *, .benefit > * { min-width: 0; }
+  @media (max-width: 760px) { .limit, .benefit { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
 
   /* Footer */
   .site-foot {
@@ -332,6 +343,7 @@
     <span class="badge">v0.1.0</span>
     <nav class="nav" aria-label="Sections">
       <a href="#overview">Overview</a>
+      <a href="#benefits">Benefits</a>
       <a href="#loop">Loop</a>
       <a href="#tools">Tools</a>
       <a href="#install">Install</a>
@@ -352,7 +364,7 @@
     <div>
       <p class="eyebrow">OpenCode plugin</p>
       <h1>Jev decides. The harness acts.</h1>
-      <p class="lede">One observed element and one operation per step. Decisions come from TypeSafe Jev; actions come from your browser MCP.</p>
+      <p class="lede">One observed element and one operation per step. Decisions come from TypeSafe Jev; actions come from your browser MCP. No screenshots and capped text keep navigation quick and cost low.</p>
       <p class="cta">
         <a class="btn primary" href="https://github.com/xpressabhi/jev-browser">View on GitHub</a>
         <a class="btn" href="#loop">How the loop works</a>
@@ -403,6 +415,42 @@
         <li>No screenshots in the loop; visible text only, truncated near 6,000 characters.</li>
         <li>Each decision is consumed once. A retry does not double-click.</li>
       </ul>
+    </div>
+  </section>
+
+  <section class="section wrap" id="benefits">
+    <h2>Fast cycles, small bills</h2>
+    <p class="section-lede">Every cycle asks a bounded multiple-choice question about observed elements. That shape is why navigation stays quick and why cost tracks text instead of pixels.</p>
+
+    <ul class="stats">
+      <li><span class="s-n mono">378–419 ms</span><span class="s-l">decision latency in the live trace</span></li>
+      <li><span class="s-n mono">0</span><span class="s-l">screenshots or image tokens sent to Jev</span></li>
+      <li><span class="s-n mono">≤255</span><span class="s-l">choices offered per question</span></li>
+      <li><span class="s-n mono">≤6,000</span><span class="s-l">characters of page text per request</span></li>
+    </ul>
+
+    <div class="benefit">
+      <h3>Sub-second decisions</h3>
+      <div>
+        <p>The live trace shows whole decisions returning in 378–419 ms. Jev answers one narrow multiple-choice question over indexed refs, and nothing in the cycle waits on a screenshot to be captured, uploaded, or interpreted.</p>
+        <p>After an action the loop waits about 50 ms — up to 200 ms when autocomplete suggestions need to appear — then observes and decides again. Navigation moves at the speed of the page, not the speed of a vision model.</p>
+      </div>
+    </div>
+
+    <div class="benefit">
+      <h3>Text-only payloads</h3>
+      <div>
+        <p>A cycle sends the URL, title, visible text capped near 6,000 characters, one indexed element table, and the last 10 actions. It never sends screenshots, image tokens, raw HTML, or the full DOM, so prompt size stays flat on heavy pages.</p>
+        <p>The one generative call — writing a value into a field — goes to a small text model and returns a single short string. Everything else is a choice among at most 255 offered options.</p>
+      </div>
+    </div>
+
+    <div class="benefit">
+      <h3>Failures spend nothing</h3>
+      <div>
+        <p>Provider errors and malformed probability distributions throw before the browser is touched, with messages like &ldquo;no action executed&rdquo;. A stale page is re-observed instead of acted on, and each decision is consumed once, so a retry cannot double-click or double-type.</p>
+        <p>The run stops as soon as <span class="mono">DONE</span> has visible evidence, and the 60-step budget is a ceiling rather than a target. Fewer wasted actions means fewer cycles to pay for.</p>
+      </div>
     </div>
   </section>
 
@@ -512,7 +560,7 @@
     <article class="tool">
       <div class="tool-head">
         <h3 class="mono">jev_text</h3>
-        <p>Writes the exact string for a TYPE_TEXT target. It never guesses a value and throws when no key resolves.</p>
+        <p>Writes the exact string for a TYPE_TEXT target. It never guesses a value and throws when no model resolves.</p>
       </div>
       <div class="tool-grid">
         <div>
@@ -535,15 +583,16 @@
               <span>value</span>
               <button class="copy" type="button" data-copy="text-out">Copy</button>
             </div>
-            <pre><code id="text-out">{ "text": "OpenAI", "model": "glm-5.3-flash" }</code></pre>
+            <pre><code id="text-out">{ "text": "OpenAI", "model": "opencode/muse-spark-1.3-contributor-free" }</code></pre>
           </div>
         </div>
       </div>
       <h4 style="margin-top:22px">Key resolution order</h4>
       <ol class="keys">
-        <li><span class="mono">TEXT_MODEL_API_KEY</span>, with optional <span class="mono">TEXT_MODEL_BASE_URL</span>, <span class="mono">TEXT_MODEL</span>, and <span class="mono">TEXT_MODEL_REASONING</span>.</li>
+        <li><span class="mono">TEXT_MODEL_API_KEY</span>, with optional <span class="mono">TEXT_MODEL_BASE_URL</span>, <span class="mono">TEXT_MODEL</span>, and <span class="mono">TEXT_MODEL_REASONING</span>; a local server works with a placeholder key.</li>
+        <li>Free OpenCode Zen models, generated inside OpenCode through one managed helper session — <span class="mono">muse-spark-1.3-contributor-free</span> first. Direct API calls to free models are rejected, so this is the only route. Contributor models may use submitted data to improve the model during their free period.</li>
         <li><span class="mono">auth.json</span> provider <span class="mono">openrouter</span> or <span class="mono">deepseek</span>.</li>
-        <li><span class="mono">auth.json</span> provider <span class="mono">opencode-go</span>, which is OpenAI compatible, sends <span class="mono">x-opencode-session</span>, and defaults to <span class="mono">glm-5.3-flash</span>.</li>
+        <li><span class="mono">auth.json</span> provider <span class="mono">opencode-go</span>, which is OpenAI compatible, sends <span class="mono">x-opencode-session</span>, and defaults to the cheap <span class="mono">deepseek-v4-flash</span>.</li>
       </ol>
     </article>
   </section>
