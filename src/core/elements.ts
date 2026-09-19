@@ -108,3 +108,76 @@ export function a11yToActions(nodes: A11yNode[]): ObservedAction[] {
   }
   return actions;
 }
+
+/**
+ * Parse a raw accessibility snapshot into a11y nodes. Supports both formats
+ * the browser MCPs emit:
+ * - chrome-devtools-mcp: `uid=1_2 button "Search" value="" disabled`
+ * - Playwright aria:     `- button "Search" [ref=e23] [disabled]: value`
+ * Container lines without a ref and `/url` property lines are skipped.
+ */
+export function snapshotToNodes(snapshot: string): A11yNode[] {
+  const nodes: A11yNode[] = [];
+  for (const raw of snapshot.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const chrome = line.match(/^uid=(\S+)\s+(\S+)([\s\S]*)$/);
+    const playwright = line.match(/^-\s+(\S+)([\s\S]*)$/);
+
+    let ref: string | undefined;
+    let role: string | undefined;
+    let rest = "";
+    if (chrome) {
+      ref = chrome[1];
+      role = chrome[2];
+      rest = chrome[3] ?? "";
+    } else if (playwright && !playwright[1].startsWith("/")) {
+      role = playwright[1];
+      rest = playwright[2] ?? "";
+      ref = rest.match(/\bref=([^\]\s]+)/)?.[1];
+    }
+    if (!ref || !role) continue;
+
+    const quoted = rest.match(/"((?:[^"\\]|\\.)*)"/);
+    const withoutAttrs = rest.replace(/"[^"]*"/g, '""').replace(/\[[^\]]*\]/g, "");
+    const value =
+      rest.match(/\bvalue="([^"]*)"/)?.[1] ??
+      rest.match(/\bvalue=(\S+)/)?.[1] ??
+      (playwright ? withoutAttrs.match(/:\s+(.+)$/)?.[1]?.trim() : undefined);
+
+    nodes.push({
+      ref,
+      role,
+      name: quoted ? quoted[1].replace(/\\"/g, '"') : "",
+      value,
+      disabled: /\[disabled\]/.test(rest) || /(?:^|\s)disabled(?:=true)?(?:\s|$)/.test(rest),
+      checked: /\[checked\]/.test(rest) || /\bchecked=true/.test(rest),
+      selected: /\[selected\]/.test(rest) || /\bselected=true/.test(rest),
+      expanded: /\[expanded\]/.test(rest) || /\bexpanded=true/.test(rest),
+    });
+  }
+  return nodes;
+}
+
+/** Parse a raw snapshot straight into the observed action list. */
+export function snapshotToActions(snapshot: string): ObservedAction[] {
+  return a11yToActions(snapshotToNodes(snapshot));
+}
+
+/** Per-kind cap. The TypeSafe endpoint rejects questions with over 255 choices. */
+export const ACTION_CAP_PER_KIND = 100;
+
+/**
+ * Keep the first N actions of each kind in document order and every control.
+ * Deterministic on purpose: the harness can scroll and re-observe to reach
+ * elements beyond the cap, while a wider action space risks HTTP 400.
+ */
+export function capActions(actions: ObservedAction[], perKind = ACTION_CAP_PER_KIND): ObservedAction[] {
+  const counts: Record<string, number> = {};
+  return actions.filter((action) => {
+    if (action.kind === "control") return true;
+    counts[action.kind] = (counts[action.kind] ?? 0) + 1;
+    return counts[action.kind] <= perKind;
+  });
+}

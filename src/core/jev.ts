@@ -1,5 +1,5 @@
 import { readProviderKey } from "./auth.ts";
-import { buildElementTable } from "./elements.ts";
+import { buildElementTable, capActions } from "./elements.ts";
 import { NEXT_ACTION, TARGET } from "./questions.ts";
 import type { HistoryEntry, JevChoice, PageState } from "./types.ts";
 
@@ -72,7 +72,9 @@ export function validateChoice(answer: any, ids: Record<string, unknown> | strin
 }
 
 export function buildRequest(state: PageState, goal: string, history: HistoryEntry[]) {
-  const { elements, targets, controls } = buildElementTable(state.actions);
+  // Cap each action kind deterministically so a heavy page cannot push a
+  // question over the endpoint's 255-choice limit, and so decisions stay small.
+  const { elements, targets, controls } = buildElementTable(capActions(state.actions));
 
   const operations: Record<string, string> = {};
   for (const name of Object.keys(targets)) operations[name] = OPERATION_HELP[name] ?? `Perform ${name}.`;

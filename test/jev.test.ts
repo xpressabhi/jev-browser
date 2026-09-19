@@ -33,6 +33,21 @@ describe("buildRequest", () => {
     assert.equal(q.operation.criteria.DONE, "Every requirement is visibly satisfied.");
     assert.ok(q.operation.criteria.BLOCKED);
   });
+
+  it("caps each action kind so heavy pages stay inside the choice limit", () => {
+    const heavy = {
+      ...page,
+      actions: Array.from({ length: 150 }, (_, i) => ({
+        id: `click-${i}`,
+        kind: "click",
+        node: `n${i}`,
+        label: `Link ${i}`,
+      })),
+    };
+    const { body } = buildRequest(heavy, "goal", []);
+    const criteria: any = (body.questions as any).click_target.criteria;
+    assert.equal(Object.keys(criteria).length, 100);
+  });
 });
 
 describe("choose", () => {
