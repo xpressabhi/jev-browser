@@ -1,6 +1,7 @@
 import { Plugin } from "@opencode/plugin";
 import { choose } from "./src/core/jev.ts";
 import { fieldText } from "./src/core/text.ts";
+import { nativeFieldText } from "./src/harness/opencode-text.ts";
 
 export default Plugin.define({
   id: "jev-browser",
@@ -59,9 +60,10 @@ export default Plugin.define({
       editor.add({
         name: "text",
         description:
-          "Generate the exact string for a TYPE_TEXT target with the small text model. " +
+          "Generate the exact string for a TYPE_TEXT target. Uses a free OpenCode Zen model " +
+          "when one is available, otherwise the configured small OpenAI-compatible model. " +
           "Input is fieldContext {goal, field, page, recent_actions}. Returns {text}. " +
-          "Throws when no key or invalid JSON — never guess.",
+          "Throws when no model or invalid JSON — never guess.",
         input: {
           type: "object",
           properties: {
@@ -73,6 +75,14 @@ export default Plugin.define({
         options: { namespace: "jev", codemode: true },
         execute: async (input) => {
           const { context } = input as { context: Record<string, unknown> };
+          if (!process.env.TEXT_MODEL_API_KEY) {
+            try {
+              const free = await nativeFieldText(ctx, context);
+              return { content: JSON.stringify(free) };
+            } catch {
+              // Free Zen models are unavailable; fall through to the configured provider.
+            }
+          }
           const { text, meta } = await fieldText(context);
           return { content: JSON.stringify({ text, model: meta.model }) };
         },

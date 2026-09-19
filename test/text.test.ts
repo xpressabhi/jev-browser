@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { fieldContext, fieldText, parseDegradedDecision } from "../src/core/text.ts";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fieldContext, fieldText, parseDegradedDecision, parseFieldValue, resolveTextProfile } from "../src/core/text.ts";
 
 describe("fieldContext", () => {
   it("truncates page text to 6000 chars", () => {
@@ -28,6 +31,48 @@ describe("fieldText", () => {
     await assert.rejects(() => fieldText({}, { env: { AUTH_PATHS: ["/nonexistent/auth.json"] } }));
     const bad: any = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '{"nope":1}' } }] }) });
     await assert.rejects(() => fieldText({}, { env, fetchFn: bad }));
+  });
+});
+
+describe("resolveTextProfile", () => {
+  function authPaths(content: Record<string, unknown>): string[] {
+    const dir = mkdtempSync(join(tmpdir(), "jev-"));
+    const file = join(dir, "auth.json");
+    writeFileSync(file, JSON.stringify(content));
+    return [file];
+  }
+
+  it("defaults to the cheap opencode-go model", () => {
+    const profile = resolveTextProfile(
+      { AUTH_PATHS: authPaths({ "opencode-go": { type: "api", key: "go-key" } }) },
+      "session-1",
+    );
+    assert.equal(profile?.base, "https://opencode.ai/zen/go/v1");
+    assert.equal(profile?.model, "deepseek-v4-flash");
+    assert.equal(profile?.key, "go-key");
+    assert.equal(profile?.headers["x-opencode-session"], "session-1");
+  });
+
+  it("honors TEXT_MODEL on the opencode-go tier", () => {
+    const profile = resolveTextProfile(
+      {
+        AUTH_PATHS: authPaths({ "opencode-go": { type: "api", key: "go-key" } }),
+        TEXT_MODEL: "mimo-v2.5",
+      },
+      "session-1",
+    );
+    assert.equal(profile?.model, "mimo-v2.5");
+  });
+
+  it("ignores a google-only auth file", () => {
+    assert.equal(
+      resolveTextProfile({ AUTH_PATHS: authPaths({ google: { type: "api", key: "g-key" } }) }, "session-1"),
+      undefined,
+    );
+  });
+
+  it("returns undefined when no provider resolves", () => {
+    assert.equal(resolveTextProfile({ AUTH_PATHS: ["/nonexistent/auth.json"] }, "session-1"), undefined);
   });
 });
 

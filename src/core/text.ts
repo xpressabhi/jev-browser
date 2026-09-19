@@ -18,13 +18,22 @@ export interface TextProfile {
   reasoning: Record<string, unknown>;
 }
 
-/** Fallback profile: OpenCode Go is OpenAI compatible and already in auth.json. */
+/**
+ * Fallback profile: OpenCode Go is OpenAI compatible and already in auth.json.
+ * The default is the cheapest documented Go model; request allowances are
+ * tracked in the Go docs (see https://opencode.ai/v2/docs/console/go).
+ *
+ * Free Zen models are not reachable over these direct endpoints: the Go
+ * endpoint answers ModelError and Console answers HTTP 403 FreeTierError for
+ * calls made outside the OpenCode client. The adapter reaches them through a
+ * managed OpenCode session instead; see src/harness/opencode-text.ts.
+ */
 export const OPENCODE_GO_BASE = "https://opencode.ai/zen/go/v1";
-export const OPENCODE_GO_MODEL = "glm-5.3-flash";
+export const OPENCODE_GO_MODEL = "deepseek-v4-flash";
 
 /**
  * Go expects an identifying user agent and a stable session header per
- * conversation (see https://opencode.ai/docs/go/#where-can-i-use-it).
+ * conversation (see https://opencode.ai/v2/docs/console/go).
  */
 export function opencodeGoProfile(key: string, sessionID: string, model?: string): TextProfile {
   return {
@@ -53,6 +62,13 @@ function fromEnvironment(env: TextEnv): TextProfile {
   };
 }
 
+/**
+ * Credential and model resolution, in order:
+ * 1. TEXT_MODEL_API_KEY env — any OpenAI-compatible endpoint, including a
+ *    local server such as Ollama or LM Studio.
+ * 2. auth.json openrouter / deepseek.
+ * 3. auth.json opencode-go — subscription models, default deepseek-v4-flash.
+ */
 export function resolveTextProfile(env: TextEnv, sessionID: string): TextProfile | undefined {
   if (env.TEXT_MODEL_API_KEY) return fromEnvironment(env);
   const shared = readProviderKey(["openrouter", "deepseek"], env.AUTH_PATHS);
@@ -84,15 +100,29 @@ export function fieldContext(
   };
 }
 
-function readReply(result: any): string {
-  const content = result?.choices?.[0]?.message?.content;
-  const output = JSON.parse(content);
+/**
+ * Strict field-value contract shared by every text backend: exactly one key,
+ * named `text`, holding a non-empty string of at most 2000 characters. A
+ * single fenced code block around the JSON is tolerated; anything else is
+ * rejected so the caller can fall back instead of typing a guess.
+ */
+export function parseFieldValue(raw: unknown): string {
+  if (typeof raw !== "string") throw new Error("shape");
+  const trimmed = raw.trim();
+  const unfenced = trimmed.startsWith("```")
+    ? trimmed.replace(/^```[a-zA-Z0-9]*[ \t]*\r?\n?/, "").replace(/```\s*$/, "").trim()
+    : trimmed;
+  const output = JSON.parse(unfenced);
   if (typeof output !== "object" || output === null) throw new Error("shape");
   const keys = Object.keys(output);
-  const value = output.text;
+  const value = (output as Record<string, unknown>).text;
   if (keys.length !== 1 || keys[0] !== "text") throw new Error("keys");
   if (typeof value !== "string" || !value.trim() || value.length > 2000) throw new Error("value");
   return value;
+}
+
+function readReply(result: any): string {
+  return parseFieldValue(result?.choices?.[0]?.message?.content);
 }
 
 /** Small-model text helper. Never guesses: throws when no key or bad JSON. */
