@@ -21,6 +21,11 @@ visible text only.
 
 ## Tools
 
+- `jev_observe` — raw MCP snapshot → `{page, actions, counts}`. Parses
+  chrome-devtools-mcp (`uid=`) and Playwright (`[ref=]`) snapshots and caps each
+  action kind at 100 (the endpoint rejects questions over 255 choices).
+- `jev_step` — `{goal, page, history}` → validated decision with `text` resolved
+  in the same call. One round trip instead of decide + text.
 - `jev_decide` — `{goal, page {url,title,text,actions[]}, history[]}` → Jev decision.
   Key resolution: `TYPESAFE_API_KEY` env → OpenCode `auth.json` (`typesafe`). Optional
   `TYPESAFE_MODEL` (default `jev-latest`).
@@ -44,12 +49,15 @@ Upstream OpenRouter example: `TEXT_MODEL_BASE_URL=https://openrouter.ai/api/v1`,
 ## Loop
 
 ```
-snapshot (chrome MCP → fallback brave) → jev_decide → [jev_text] → verify → act → wait → repeat
+fast path: snapshot → jev_observe → jev_step → verify → act → repeat   (one code-mode script)
+steps:     snapshot (chrome MCP → fallback brave) → jev_step / jev_decide → verify → act → wait
 until DONE / BLOCKED / 60 steps
 ```
 
-See `skill/SKILL.md`. Core (`src/core/`) has no OpenCode imports and is reusable
-from any harness or plain CLI.
+Run the fast path inside a single code-mode script so raw snapshots and action
+arrays stay in the script, not the model context. See `skill/SKILL.md`.
+Core (`src/core/`) has no OpenCode imports and is reusable from any harness or
+plain CLI.
 
 ## Dev
 

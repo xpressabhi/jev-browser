@@ -467,6 +467,10 @@
     </ol>
     <p class="flow-exit">Exit conditions: <span class="mono">DONE</span> needs visible evidence of every requirement, <span class="mono">BLOCKED</span> means no supported operation can progress, and the run stops after 60 steps.</p>
 
+    <div class="callout">
+      <p><strong>Fast path:</strong> run <span class="mono">jev_observe</span> → <span class="mono">jev_step</span> → act inside one code-mode script, so raw snapshots and action arrays never enter the model context — one model turn per task instead of three or four per action.</p>
+    </div>
+
     <ol class="steps">
       <li>
         <strong>Snapshot and build the action space.</strong>
@@ -522,12 +526,79 @@
   </section>
 
   <section class="section wrap" id="tools">
-    <h2>Two tools, one decision each</h2>
+    <h2>Four tools, one cycle</h2>
+
+    <article class="tool">
+      <div class="tool-head">
+        <h3 class="mono">jev_observe</h3>
+        <p>Raw MCP snapshot in, capped action list out — the model never hand-builds <span class="mono">actions[]</span>.</p>
+      </div>
+      <div class="tool-grid">
+        <div>
+          <h4>Input</h4>
+          <div class="code">
+            <div class="code-head">
+              <span>take_snapshot output</span>
+              <button class="copy" type="button" data-copy="observe-in">Copy</button>
+            </div>
+            <pre><code id="observe-in">{ "snapshot": "uid=1_2 link \"More information...\"",
+  "url": "...", "title": "...", "text": "..." }</code></pre>
+          </div>
+        </div>
+        <div>
+          <h4>Returns</h4>
+          <div class="code">
+            <div class="code-head">
+              <span>page + actions</span>
+              <button class="copy" type="button" data-copy="observe-out">Copy</button>
+            </div>
+            <pre><code id="observe-out">{ "page": { "url": "...", "title": "...", "text": "..." },
+  "actions": [ { "id": "click-1_2", "kind": "click", "node": "1_2",
+    "label": "More information..." } ],
+  "counts": { "click": 3, "fill": 1, "control": 3 } }</code></pre>
+          </div>
+        </div>
+      </div>
+      <p class="tool-note">Parses chrome-devtools-mcp (<span class="mono">uid=</span>) and Playwright (<span class="mono">[ref=]</span>) snapshots, caps each action kind at 100, and always adds <span class="mono">SCROLL_UP/SCROLL_DOWN/WAIT</span>.</p>
+    </article>
+
+    <article class="tool">
+      <div class="tool-head">
+        <h3 class="mono">jev_step</h3>
+        <p>One cycle in one call: operation, target, and the exact text for TYPE_TEXT.</p>
+      </div>
+      <div class="tool-grid">
+        <div>
+          <h4>Input</h4>
+          <div class="code">
+            <div class="code-head">
+              <span>jev_step input</span>
+              <button class="copy" type="button" data-copy="step-in">Copy</button>
+            </div>
+            <pre><code id="step-in">{ "goal": "...", "page": { "url": "...", "title": "...",
+  "text": "...", "actions": [ ... ] }, "history": [ ... ] }</code></pre>
+          </div>
+        </div>
+        <div>
+          <h4>Returns</h4>
+          <div class="code">
+            <div class="code-head">
+              <span>ready-to-act step</span>
+              <button class="copy" type="button" data-copy="step-out">Copy</button>
+            </div>
+            <pre><code id="step-out">{ "choice": "fill-e23", "operation": "TYPE_TEXT",
+  "target": "1", "text": "OpenAI",
+  "confidence": 0.96, "latency_ms": 431 }</code></pre>
+          </div>
+        </div>
+      </div>
+      <p class="tool-note">Replaces <span class="mono">jev_decide</span> + <span class="mono">jev_text</span> in one round trip. The harness still verifies freshness and executes the action.</p>
+    </article>
 
     <article class="tool">
       <div class="tool-head">
         <h3 class="mono">jev_decide</h3>
-        <p>Operation and target selection for one cycle.</p>
+        <p>Operation and target selection for one cycle, when the pieces are needed separately.</p>
       </div>
       <div class="tool-grid">
         <div>
@@ -641,7 +712,7 @@
           </div>
           <pre><code id="limit-400">{ "detail": "Too many choices. Must have at most 255 choices." }</code></pre>
         </div>
-        <p>The live trace above caps each action kind at 100 candidates. Capping by viewport or by relevance works too. The plugin core does not impose a cap, so the harness or the agent loop has to.</p>
+        <p>The plugin core caps each action kind at 100 candidates deterministically, so the same page cannot push a question over the choice limit. Scroll and re-observe to reach elements beyond the cap; a harness can also cap by viewport or relevance where that fits better.</p>
       </div>
     </div>
 
