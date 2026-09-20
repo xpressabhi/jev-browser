@@ -13,39 +13,16 @@ are just ways to wire it up.
 
 ## Zero-touch setup
 
-Paste this into any coding agent that can run shell commands. It detects the
-harness, installs the matching adapter, and asks you for the one key it needs.
+Paste this one line into any coding agent that can run shell commands:
 
-````text
-Set up jev-browser from https://github.com/xpressabhi/jev-browser
+```text
+Set up jev-browser from https://xpressabhi.github.io/jev-browser/install.md and follow those instructions.
+```
 
-0. If the jev tools or the jev CLI are already available in this session,
-   stop here and tell me it is already set up.
-
-1. Clone the repo somewhere stable, e.g. ~/.local/share/jev-browser:
-   git clone https://github.com/xpressabhi/jev-browser ~/.local/share/jev-browser
-
-2. Detect which harness you are running in and install accordingly:
-   - Claude Code (you have ~/.claude/ or a Skill tool):
-     ~/.local/share/jev-browser/adapters/claude/install.sh
-   - Codex (you have ~/.codex/):
-     ~/.local/share/jev-browser/adapters/codex/install.sh
-   - OpenCode: add the absolute repo path to the "plugins" array in the
-     opencode config (opencode.jsonc / opencode.json), then restart OpenCode.
-   - Anything else: put jev on PATH with
-     npm --prefix ~/.local/share/jev-browser link
-     then copy skill/SKILL.md into that harness's skills or rules directory.
-
-3. Ask me for my TypeSafe API key. Write it to
-   ~/.config/jev-browser/.env as TYPESAFE_API_KEY=... (create the directory,
-   chmod 600 the file). Never echo the key back, and never write it into the
-   repo.
-
-4. Verify with: jev observe --snapshot /dev/null --url u --title t
-   (that command should print JSON, not an error about a missing key).
-````
-
-Prefer to do it by hand? The steps below are the manual equivalent.
+The agent fetches [install.md](https://xpressabhi.github.io/jev-browser/install.md),
+detects the harness, installs the matching adapter, asks for the TypeSafe API
+key, and verifies the setup. Prefer to do it by hand? The steps below are the
+manual equivalent.
 
 ## Try it in 60 seconds
 
