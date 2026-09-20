@@ -1,5 +1,5 @@
 import { readProviderKey } from "./auth.ts";
-import { anthropicProfile, buildAnthropicRequest } from "../harness/anthropic.ts";
+import { anthropicProfile, buildAnthropicRequest } from "../anthropic.ts";
 import { TEXT_VALUE } from "./questions.ts";
 import type { HistoryEntry, ObservedAction, PageState } from "./types.ts";
 

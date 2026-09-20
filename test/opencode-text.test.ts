@@ -78,6 +78,25 @@ describe("pickFreeModel", () => {
 });
 
 describe("nativeFieldText", () => {
+  it("reuses the calling session's model when it has one", async () => {
+    const { client, calls } = fakeClient();
+    client.session.get = async (input: { sessionID: string }) =>
+      input.sessionID === "ses_live"
+        ? { model: { providerID: "anthropic", id: "claude-sonnet-4-5" } }
+        : { model: { providerID: "opencode", id: MUSE } };
+    const out = await nativeFieldText(client, { goal: "g" }, { sessionID: "ses_live" });
+
+    assert.equal(out.model, "anthropic/claude-sonnet-4-5");
+    assert.equal(calls.create, 1);
+    assert.equal(calls.generate, 1);
+  });
+
+  it("falls back to a free model when the calling session is gone", async () => {
+    const { client } = fakeClient();
+    const out = await nativeFieldText(client, { goal: "g" }, { sessionID: "ses_gone" });
+    assert.equal(out.model, `opencode/${MUSE}`);
+  });
+
   it("creates one helper session, sends the goal, and parses the reply", async () => {
     const { client, calls, prompts, store } = fakeClient();
     const out = await nativeFieldText(client, { goal: "search Wikipedia", field: { label: "Search" } });

@@ -1,4 +1,4 @@
-import type { TextProfile } from "../core/text.ts";
+import type { TextProfile } from "./core/text.ts";
 
 /**
  * Anthropic Messages API adapter.

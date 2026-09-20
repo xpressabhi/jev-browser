@@ -8,7 +8,7 @@ import {
   anthropicProfile,
   anthropicReplyText,
   buildAnthropicRequest,
-} from "../src/harness/anthropic.ts";
+} from "../src/anthropic.ts";
 import { replyText, textRequest } from "../src/core/text.ts";
 
 describe("anthropicProfile", () => {

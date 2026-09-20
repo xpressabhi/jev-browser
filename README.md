@@ -145,8 +145,9 @@ Upstream OpenRouter example: `TEXT_MODEL_BASE_URL=https://openrouter.ai/api/v1`,
 
 ```
 src/core/            harness-agnostic decision core (no harness imports)
+src/anthropic.ts     Messages API text adapter
 src/cli.ts           cross-harness CLI (bin: jev)
-src/harness/         opencode plugin adapter, session text, anthropic adapter
+src/harness/         opencode plugin adapter + session text
 skill/SKILL.md       the skill every harness installs
 adapters/            claude/ and codex/ install scripts + shared policy
 ```
