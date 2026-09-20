@@ -3,75 +3,43 @@
 Jev as the decision step, any browser harness as the hands. Zero runtime
 dependencies.
 
-One decision core, three harnesses. Jev (`TypeSafe System One`) picks one
-operation and one observed target per cycle; a small model writes text only for
-`TYPE_TEXT`. No screenshots in the loop, visible text only.
-
-| Harness | Entry point | Install |
-|---|---|---|
-| OpenCode | plugin (code-mode tools) | `"plugins": ["/path/to/jev-browser"]` in `opencode.jsonc` |
-| Claude Code | skill + `jev` CLI | `adapters/claude/install.sh` |
-| Codex | skill + `jev` CLI | `adapters/codex/install.sh` |
-
-Only the OpenCode plugin is wired up by default. The Claude and Codex adapters
-ship in `adapters/` but install nothing until you run their script.
+One decision core, any harness. Jev (`TypeSafe System One`) picks one operation
+and one observed target per cycle; a small model writes text only for
+`TYPE_TEXT`. No screenshots in the loop, visible text only. The decision core
+and the `jev` CLI carry no harness imports — OpenCode, Claude Code, and Codex
+are just ways to wire it up.
 
 `TYPESAFE_API_KEY` is the only required secret.
 
-## OpenCode
-
-```jsonc
-// opencode.jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": ["/path/to/jev-browser"]
-}
-```
-
-Registers in the `jev` namespace: `jev_observe`, `jev_step`, `jev_decide`,
-`jev_text`. Also loads the `jev-browser` skill (`skill/SKILL.md`,
-auto-invoked), a browser policy in the system prompt, and the `/jev-browse`
-command. Run `/jev-browse` to seed the loop, or just ask for browser work.
-
-Text values reuse the session's selected model through a managed helper
-session; a free OpenCode Zen model is the fallback. No second key needed.
-
-## Claude Code / Codex
+## Try it in 60 seconds
 
 ```sh
-./adapters/claude/install.sh   # ~/.claude/skills + ~/.claude/CLAUDE.md
-./adapters/codex/install.sh    # ~/.codex/skills + ~/.codex/AGENTS.md
+./src/cli.ts observe --snapshot snapshot.txt --url "$URL" --title "$TITLE" \
+  | ./src/cli.ts step --goal "Search Wikipedia for OpenAI" --page -
 ```
 
-Each installs the skill, appends the browser policy (marker-guarded, safe to
-re-run), and puts a `jev` wrapper on `~/.local/bin`. The skill drives the CLI:
-snapshots stay in files, only decision JSON enters context.
+`observe` parses a chrome-devtools-mcp (`uid=`) or Playwright (`[ref=]`)
+accessibility snapshot; `step` returns the next operation, the observed node to
+act on, and the exact text for `TYPE_TEXT`. Nothing touches a browser — you (or
+your harness) execute the decision. Node >= 22.6, no build step.
 
-```sh
-SNAP=$(mktemp); $BROWSER take_snapshot > "$SNAP"
-DEC=$(jev observe --snapshot "$SNAP" --url "$URL" --title "$TITLE" \
-      | jev step --goal "$GOAL" --page -)
-# execute DEC.action via the browser MCP, append history, repeat
-```
+## Wire it into your harness
 
-## CLI
+The browser actions always come from whatever browser tool the session has
+(chrome, brave, playwright, a harness-native browser). The decision always
+comes from the same core.
 
-`jev` decides; it never touches a browser. Every command reads `-` from stdin
-and writes one compact JSON line to stdout (`{error}` + exit 2 on failure).
+| Harness | What to add | How |
+|---|---|---|
+| Any harness with a shell | `jev` CLI | `./src/cli.ts` or `npm link` for `bin: jev` |
+| OpenCode | plugin: code-mode tools, skill, browser policy, `/jev-browse` | `"plugins": ["/path/to/jev-browser"]` in `opencode.jsonc` |
+| Claude Code | skill + policy + `jev` CLI | `./adapters/claude/install.sh` |
+| Codex | skill + policy + `jev` CLI | `./adapters/codex/install.sh` |
 
-```
-jev observe --snapshot - [--url U] [--title T] [--text -]
-  → {page:{url,title,text,fingerprint}, actions[], counts{}}
-jev decide  --goal G --page - [--history -] [--url U] [--title T]
-  → {choice, operation, target, confidence, probabilities, latency_ms}
-jev step    --goal G --page - [--history -]
-  → decide output + {text, text_model, action:{operation,node,kind,label,role,value}}
-jev text    --context -
-  → {text, model}
-```
-
-`--page -` accepts an `observe` result or a raw chrome/Playwright snapshot.
-Node >= 22.6 (native TypeScript; no build step).
+The Claude and Codex adapters ship in `adapters/` but install nothing until you
+run their script. The OpenCode plugin registers `jev_observe`, `jev_step`,
+`jev_decide`, and `jev_text` in code mode so raw snapshots never enter the
+model context.
 
 ## Loop
 
@@ -101,11 +69,30 @@ done
    stop at 60 steps. Each decision is consumed once — a retry must not
    double-click. Three no-change non-wait actions in a row stop the run.
 
-## Tools (OpenCode)
+## CLI
+
+`jev` decides; it never touches a browser. Every command reads `-` from stdin
+and writes one compact JSON line to stdout (`{error}` + exit 2 on failure).
+
+```
+jev observe --snapshot - [--url U] [--title T] [--text -]
+  → {page:{url,title,text,fingerprint}, actions[], counts{}}
+jev decide  --goal G --page - [--history -] [--url U] [--title T]
+  → {choice, operation, target, confidence, probabilities, latency_ms}
+jev step    --goal G --page - [--history -]
+  → decide output + {text, text_model, action:{operation,node,kind,label,role,value}}
+jev text    --context -
+  → {text, model}
+```
+
+`--page -` accepts an `observe` result or a raw chrome/Playwright snapshot.
+`observe` caps each action kind at 100 (the endpoint rejects questions with over
+255 choices) and always adds `SCROLL_UP/SCROLL_DOWN/WAIT`; scroll and re-observe
+to reach elements beyond the cap.
+
+### Plugin tools (OpenCode)
 
 - `jev_observe` — `{snapshot, url?, title?, text?}` → `{page, actions, counts}`.
-  Parses chrome-devtools-mcp (`uid=`) and Playwright (`[ref=]`) snapshots, caps
-  each action kind at 100, and always adds `SCROLL_UP/SCROLL_DOWN/WAIT`.
 - `jev_step` — `{goal, page {url,title,text,actions[]}, history?}` → validated
   decision with `text` resolved in the same call for `TYPE_TEXT`.
 - `jev_decide` — `{goal, page, history?}` →
@@ -151,7 +138,7 @@ src/core/            harness-agnostic decision core (no harness imports)
 src/anthropic.ts     Messages API text adapter
 src/cli.ts           cross-harness CLI (bin: jev)
 src/harness/         opencode plugin adapter + session text
-skill/SKILL.md       the skill every harness installs
+skill/SKILL.md       the skill Claude Code and Codex install
 adapters/            claude/ and codex/ install scripts + shared policy
 ```
 

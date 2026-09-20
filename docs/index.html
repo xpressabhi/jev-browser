@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>jev-browser · Jev decides, the harness acts</title>
-<meta name="description" content="A harness-agnostic TypeScript core with an OpenCode plugin: TypeSafe Jev picks one observed element and one operation per step. Text-only payloads keep cycles fast and bills small. Claude Code and Codex adapters included.">
+<meta name="description" content="TypeSafe Jev picks one observed element and one operation per step. A harness-agnostic TypeScript core with a CLI and adapters for OpenCode, Claude Code, and Codex. Text-only payloads keep cycles fast and bills small.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d6b47'/%3E%3Cpath d='M9 16h11m0 0-4.5-4.5M20 16l-4.5 4.5' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <meta property="og:title" content="jev-browser · Jev decides, the harness acts">
@@ -150,7 +150,7 @@
 
   <section class="hero wrap" id="top">
     <div>
-      <p class="eyebrow">OpenCode plugin · harness-agnostic core</p>
+      <p class="eyebrow">Jev decides · any harness acts</p>
       <h1>Jev decides. The harness acts.</h1>
       <p class="lede">One observed element and one operation per step. Decisions come from TypeSafe Jev; actions come from your browser MCP. No screenshots and capped text keep navigation quick and cost low.</p>
       <p class="cta">
@@ -202,7 +202,7 @@
 
   <section class="section wrap" id="benefits">
     <h2>Fast cycles, small bills</h2>
-    <p class="section-lede">Bounded multiple-choice questions and text-only payloads. One code-mode script can run the whole cycle with snapshots kept out of the model context.</p>
+    <p class="section-lede">Bounded multiple-choice questions and text-only payloads. The core is harness-agnostic; one code-mode script or CLI pipe can run the whole cycle with snapshots kept out of the model context.</p>
     <ul class="stats">
       <li><span class="s-n mono">378–419 ms</span><span class="s-l">decision latency in the live trace</span></li>
       <li><span class="s-n mono">0</span><span class="s-l">screenshots or image tokens sent to Jev</span></li>
@@ -214,7 +214,16 @@
 
   <section class="section wrap" id="install">
     <h2>Quick start</h2>
-    <p class="section-lede">Point OpenCode at a local checkout. Zero runtime dependencies and no build step. The same core drives the <span class="mono">jev</span> CLI for other harnesses.</p>
+    <p class="section-lede">The core and the CLI need no build step and no browser binding: pipe a snapshot in, get a decision out. Node 22.6+.</p>
+    <div class="code">
+      <div class="code-head">
+        <span>shell</span>
+        <button class="copy" type="button" data-copy="install-cli">Copy</button>
+      </div>
+      <pre><code id="install-cli">./src/cli.ts observe --snapshot snapshot.txt --url "$URL" --title "$TITLE" \
+  | ./src/cli.ts step --goal "Search Wikipedia for OpenAI" --page -</code></pre>
+    </div>
+    <p class="section-lede" style="margin-top: 22px;">Then wire it into a harness — the same core underneath each one.</p>
     <div class="code">
       <div class="code-head">
         <span>opencode.jsonc</span>
@@ -225,7 +234,7 @@
   "plugins": ["/path/to/jev-browser"]
 }</code></pre>
     </div>
-    <p class="more">Then run <span class="mono">/jev-browse</span> or just ask for browser work. Claude Code and Codex use <span class="mono">adapters/&lt;harness&gt;/install.sh</span> plus the CLI. Configuration and model resolution are in the <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md#text-model-resolution">README</a>.</p>
+    <p class="more">Claude Code and Codex use <span class="mono">adapters/&lt;harness&gt;/install.sh</span> plus the CLI. Then run <span class="mono">/jev-browse</span> in OpenCode, or just ask for browser work. Configuration and model resolution are in the <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md#text-model-resolution">README</a>.</p>
   </section>
 
 </main>
