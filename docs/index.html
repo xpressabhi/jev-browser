@@ -195,7 +195,7 @@
       <li>Targets are element refs from the latest snapshot; the executor never invents selectors, coordinates, or values.</li>
       <li>One validated operation and target per cycle, consumed once; stale refs are re-observed, not acted on.</li>
       <li>No screenshots in the loop; page text is capped near 6,000 characters and treated as untrusted data.</li>
-      <li>Text values reuse the session&rsquo;s selected model; free Zen models, host keys, and a local OpenAI-compatible endpoint are the fallbacks.</li>
+      <li>Text values reuse the session&rsquo;s selected model; host keys, an optional <span class="mono">TEXT_MODEL_API_KEY</span> override, and free Zen models are the fallbacks.</li>
     </ul>
     <p class="more">Full reference — tools, loop, key resolution, limits — in the <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md#tools">README</a>.</p>
   </section>

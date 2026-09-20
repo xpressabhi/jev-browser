@@ -82,7 +82,8 @@ Only when each decision must be inspected (HITL, uncertain pages):
 
 ## Keys
 
-`TYPESAFE_API_KEY` is the only required secret. Text values resolve from
-`TEXT_MODEL_API_KEY` (any OpenAI-compatible endpoint, including local), the
-host's `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, or `auth.json`. Any of these can
-live in `./.env` or `~/.config/jev-browser/.env`.
+`TYPESAFE_API_KEY` is the only required secret. `TYPE_TEXT` values come from
+the session's selected model in OpenCode, or from a host key
+(`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) elsewhere. `TEXT_MODEL_API_KEY` is an
+optional override for pinning a specific or local model. Any of these can live
+in `./.env` or `~/.config/jev-browser/.env`.

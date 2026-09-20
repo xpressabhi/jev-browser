@@ -157,21 +157,30 @@ to reach elements beyond the cap.
 
 ## Text model resolution
 
-First hit wins, every harness:
+You normally configure nothing. In OpenCode the text value for `TYPE_TEXT`
+comes from the session's selected model — no second key. Every other tier is a
+fallback for harnesses without a session model, or an explicit override:
 
 1. `TEXT_MODEL_API_KEY` env (+ `TEXT_MODEL_BASE_URL`, `TEXT_MODEL`,
-   `TEXT_MODEL_REASONING`) — any OpenAI-compatible endpoint, including a local
-   server (`http://localhost:11434/v1`, `TEXT_MODEL=<model>`).
+   `TEXT_MODEL_REASONING`) — opt-in override; any OpenAI-compatible endpoint,
+   including a local server (`http://localhost:11434/v1`, `TEXT_MODEL=<model>`).
 2. OpenCode only: the calling session's selected model, via a managed helper
-   session.
-3. `ANTHROPIC_API_KEY` — Haiku-class model through the Messages API.
-4. `OPENAI_API_KEY` — `gpt-4o-mini`-class through Chat Completions.
+   session. This is the default; set nothing.
+3. `ANTHROPIC_API_KEY` — Haiku-class model through the Messages API (Claude Code
+   sessions usually already carry this).
+4. `OPENAI_API_KEY` — `gpt-4o-mini`-class through Chat Completions (Codex
+   sessions usually already carry this).
 5. `auth.json` `openrouter` / `deepseek` / `opencode-go`.
 6. Throws — never guesses.
 
-Keys can live in `./.env` or `~/.config/jev-browser/.env` (`JEV_ENV_FILE`
-overrides the search path). Real environment variables always win.
+So the only key you must supply is `TYPESAFE_API_KEY`. Tiers 3–4 reuse a host
+key that is already in the environment; tier 1 exists to pin a specific or
+cheap model, and tiers 1–5 can also live in `./.env` or
+`~/.config/jev-browser/.env` (`JEV_ENV_FILE` overrides the search path — real
+environment variables always win).
 
+Local-model example: `TEXT_MODEL_BASE_URL=http://localhost:11434/v1`,
+`TEXT_MODEL=llama3`, `TEXT_MODEL_API_KEY=unused`.
 Upstream OpenRouter example: `TEXT_MODEL_BASE_URL=https://openrouter.ai/api/v1`,
 `TEXT_MODEL=inception/mercury-2.5`, `TEXT_MODEL_REASONING=none`.
 
