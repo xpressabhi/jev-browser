@@ -13,6 +13,8 @@ are just ways to wire it up.
 
 ## Try it in 60 seconds
 
+After install:
+
 ```sh
 ./src/cli.ts observe --snapshot snapshot.txt --url "$URL" --title "$TITLE" \
   | ./src/cli.ts step --goal "Search Wikipedia for OpenAI" --page -
@@ -23,15 +25,68 @@ accessibility snapshot; `step` returns the next operation, the observed node to
 act on, and the exact text for `TYPE_TEXT`. Nothing touches a browser — you (or
 your harness) execute the decision. Node >= 22.6, no build step.
 
-## Wire it into your harness
+## Install
 
-The browser actions always come from whatever browser tool the session has
-(chrome, brave, playwright, a harness-native browser). The decision always
-comes from the same core.
+Prerequisites: Node >= 22.6, `TYPESAFE_API_KEY`, and a browser MCP (or any
+browser tool the harness can drive). The CLI is what every harness uses; the
+OpenCode plugin additionally exposes code-mode tools.
+
+```sh
+git clone https://github.com/xpressabhi/jev-browser && cd jev-browser
+npm link                 # optional: puts `bin: jev` on PATH (./src/cli.ts works too)
+```
+
+Make the key available once: `export TYPESAFE_API_KEY=...`, or write
+`./.env` / `~/.config/jev-browser/.env` (real environment variables win).
+
+### OpenCode
+
+1. Point the config at the checkout (an absolute path is safest; `.` works when
+   OpenCode runs in this directory):
+   ```jsonc
+   // opencode.jsonc
+   { "$schema": "https://opencode.ai/config.json",
+     "plugins": ["/path/to/jev-browser"] }
+   ```
+2. Restart OpenCode and check the `jev` namespace: `jev_observe`, `jev_step`,
+   `jev_decide`, `jev_text`.
+3. Run `/jev-browse` or just ask for browser work. The plugin also installs the
+   `jev-browser` skill, a browser policy in the system prompt, and registers the
+   skill in code mode so raw snapshots stay out of context.
+
+### Claude Code
+
+1. `./adapters/claude/install.sh`
+2. That writes the skill to `~/.claude/skills/jev-browser/SKILL.md`, appends the
+   browser policy to `~/.claude/CLAUDE.md` (marker-guarded, safe to re-run), and
+   puts a `jev` wrapper in `~/.local/bin`.
+3. Ensure `~/.local/bin` is on PATH, then restart Claude Code. The skill
+   auto-invokes on browser work; snapshots are piped through files.
+
+### Codex
+
+1. `./adapters/codex/install.sh`
+2. That writes the skill to `~/.codex/skills/jev-browser/SKILL.md`, appends the
+   browser policy to `~/.codex/AGENTS.md` (marker-guarded, safe to re-run), and
+   puts a `jev` wrapper in `~/.local/bin`.
+3. Restart Codex. Verify the CLI with `jev help`.
+
+### Any other harness (Cursor, Windsurf, Gemini CLI, Cline, …)
+
+1. Make `jev` reachable — `npm link`, the wrapper from an adapter script, or a
+   shell function: `jev() { node /path/to/jev-browser/src/cli.ts "$@"; }`.
+2. Copy `skill/SKILL.md` into wherever that harness keeps skills or rules
+   (`~/.cursor/rules/`, `~/.gemini/skills/`, an `AGENTS.md`, …), or paste the
+   fragment from `adapters/policy.md` into its system rules.
+3. Use the CLI loop: snapshot with the harness browser tool, pipe through
+   `jev observe` → `jev step`, act on `DEC.action.node`, repeat until `DONE` or
+   `BLOCKED`.
+
+## Harness matrix
 
 | Harness | What to add | How |
 |---|---|---|
-| Any harness with a shell | `jev` CLI | `./src/cli.ts` or `npm link` for `bin: jev` |
+| Any harness with a shell | `jev` CLI | `./src/cli.ts`, `npm link`, or a shell function |
 | OpenCode | plugin: code-mode tools, skill, browser policy, `/jev-browse` | `"plugins": ["/path/to/jev-browser"]` in `opencode.jsonc` |
 | Claude Code | skill + policy + `jev` CLI | `./adapters/claude/install.sh` |
 | Codex | skill + policy + `jev` CLI | `./adapters/codex/install.sh` |
