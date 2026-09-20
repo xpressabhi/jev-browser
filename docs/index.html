@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>jev-browser · Jev decides, the harness acts</title>
-<meta name="description" content="An OpenCode plugin that puts TypeSafe Jev in charge of browser decisions: one observed element and one operation per step. Text-only payloads keep cycles fast and bills small.">
+<meta name="description" content="A harness-agnostic TypeScript core with an OpenCode plugin: TypeSafe Jev picks one observed element and one operation per step. Text-only payloads keep cycles fast and bills small. Claude Code and Codex adapters included.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d6b47'/%3E%3Cpath d='M9 16h11m0 0-4.5-4.5M20 16l-4.5 4.5' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <meta property="og:title" content="jev-browser · Jev decides, the harness acts">
@@ -150,7 +150,7 @@
 
   <section class="hero wrap" id="top">
     <div>
-      <p class="eyebrow">OpenCode plugin</p>
+      <p class="eyebrow">OpenCode plugin · harness-agnostic core</p>
       <h1>Jev decides. The harness acts.</h1>
       <p class="lede">One observed element and one operation per step. Decisions come from TypeSafe Jev; actions come from your browser MCP. No screenshots and capped text keep navigation quick and cost low.</p>
       <p class="cta">
@@ -195,7 +195,7 @@
       <li>Targets are element refs from the latest snapshot; the executor never invents selectors, coordinates, or values.</li>
       <li>One validated operation and target per cycle, consumed once; stale refs are re-observed, not acted on.</li>
       <li>No screenshots in the loop; page text is capped near 6,000 characters and treated as untrusted data.</li>
-      <li>Free OpenCode Zen models first (muse-spark contributor), with a cheap OpenCode Go fallback for text.</li>
+      <li>Text values reuse the session&rsquo;s selected model; free Zen models, host keys, and a local OpenAI-compatible endpoint are the fallbacks.</li>
     </ul>
     <p class="more">Full reference — tools, loop, key resolution, limits — in the <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md#tools">README</a>.</p>
   </section>
@@ -214,7 +214,7 @@
 
   <section class="section wrap" id="install">
     <h2>Quick start</h2>
-    <p class="section-lede">Point OpenCode at a local checkout. Zero runtime dependencies and no build step.</p>
+    <p class="section-lede">Point OpenCode at a local checkout. Zero runtime dependencies and no build step. The same core drives the <span class="mono">jev</span> CLI for other harnesses.</p>
     <div class="code">
       <div class="code-head">
         <span>opencode.jsonc</span>
@@ -225,7 +225,7 @@
   "plugins": ["/path/to/jev-browser"]
 }</code></pre>
     </div>
-    <p class="more">Then run <span class="mono">/jev-browse</span> or just ask for browser work. Configuration and model resolution are in the <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md#text-model-resolution">README</a>.</p>
+    <p class="more">Then run <span class="mono">/jev-browse</span> or just ask for browser work. Claude Code and Codex use <span class="mono">adapters/&lt;harness&gt;/install.sh</span> plus the CLI. Configuration and model resolution are in the <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md#text-model-resolution">README</a>.</p>
   </section>
 
 </main>

@@ -13,6 +13,9 @@ operation and one observed target per cycle; a small model writes text only for
 | Claude Code | skill + `jev` CLI | `adapters/claude/install.sh` |
 | Codex | skill + `jev` CLI | `adapters/codex/install.sh` |
 
+Only the OpenCode plugin is wired up by default. The Claude and Codex adapters
+ship in `adapters/` but install nothing until you run their script.
+
 `TYPESAFE_API_KEY` is the only required secret.
 
 ## OpenCode
