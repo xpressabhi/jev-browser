@@ -133,6 +133,7 @@
     <span class="badge">v0.1.0</span>
     <nav class="nav" aria-label="Sections">
       <a href="#overview">Overview</a>
+      <a href="#setup">Set up</a>
       <a href="#benefits">Benefits</a>
       <a href="#install">Quick start</a>
       <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md">README</a>
@@ -186,6 +187,44 @@
       </ol>
       <p class="trace-note">Goal: search Wikipedia for &ldquo;OpenAI&rdquo; and open the article. Cycle 3 ended the run with the article headline and lead paragraph verified on screen.</p>
     </aside>
+  </section>
+
+  <section class="section wrap" id="setup">
+    <h2>Zero-touch setup</h2>
+    <p class="section-lede">Paste this into any coding agent that can run shell commands. It detects the harness, installs the matching adapter, and asks you for the one key it needs.</p>
+    <div class="code">
+      <div class="code-head">
+        <span>agent prompt</span>
+        <button class="copy" type="button" data-copy="setup-prompt">Copy</button>
+      </div>
+      <pre><code id="setup-prompt">Set up jev-browser from https://github.com/xpressabhi/jev-browser
+
+0. If the jev tools or the jev CLI are already available in this session,
+   stop here and tell me it is already set up.
+
+1. Clone the repo somewhere stable, e.g. ~/.local/share/jev-browser:
+   git clone https://github.com/xpressabhi/jev-browser ~/.local/share/jev-browser
+
+2. Detect which harness you are running in and install accordingly:
+   - Claude Code (you have ~/.claude/ or a Skill tool):
+     ~/.local/share/jev-browser/adapters/claude/install.sh
+   - Codex (you have ~/.codex/):
+     ~/.local/share/jev-browser/adapters/codex/install.sh
+   - OpenCode: add the absolute repo path to the "plugins" array in the
+     opencode config (opencode.jsonc / opencode.json), then restart OpenCode.
+   - Anything else: put jev on PATH with
+     npm --prefix ~/.local/share/jev-browser link
+     then copy skill/SKILL.md into that harness's skills or rules directory.
+
+3. Ask me for my TypeSafe API key. Write it to
+   ~/.config/jev-browser/.env as TYPESAFE_API_KEY=... (create the directory,
+   chmod 600 the file). Never echo the key back, and never write it into the
+   repo.
+
+4. Verify with: jev observe --snapshot /dev/null --url u --title t
+   (that command should print JSON, not an error about a missing key).</code></pre>
+    </div>
+    <p class="more">Prefer to do it by hand? <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md#install">README → Install</a>.</p>
   </section>
 
   <section class="section wrap" id="overview">
