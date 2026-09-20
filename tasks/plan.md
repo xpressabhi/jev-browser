@@ -13,7 +13,7 @@ mandatory secret, and make OpenCode reuse the selected session model for
 - Core (`src/core/`) stays dependency-free and harness-free; the CLI is the
   second entry point to the same functions the plugin uses.
 - Text profiles gain `provider: "openai" | "anthropic"`; the Anthropic request
-  builder lives in `src/harness/anthropic.ts` so core stays OpenAI-shaped.
+  builder lives in `src/anthropic.ts` so core stays OpenAI-shaped.
 - Text resolution order: `TEXT_MODEL_*` → OpenCode session model (adapter) →
   `ANTHROPIC_API_KEY` → `OPENAI_API_KEY` → `auth.json` → throw.
 - No build step: Node 22+ runs `.ts` via `--experimental-strip-types`.
@@ -47,7 +47,7 @@ mandatory secret, and make OpenCode reuse the selected session model for
 - [ ] Task 7: CLI-flavored `skill/SKILL.md` (frontmatter added)
 - [ ] Task 8: `adapters/claude/install.sh`, `adapters/codex/install.sh`,
       shared policy fragment, `bin`/shebang in package.json
-- [ ] Task 9: README harness matrix; spec delta (`src/harness/anthropic.ts`)
+- [ ] Task 9: README harness matrix; spec delta (`src/anthropic.ts`)
 
 ### Checkpoint: Complete
 - [ ] `npm test` + `npm run typecheck` green
