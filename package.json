@@ -5,7 +5,10 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.6"
+  },
+  "bin": {
+    "jev": "./src/cli.ts"
   },
   "exports": {
     ".": "./index.ts",

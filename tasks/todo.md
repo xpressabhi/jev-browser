@@ -4,17 +4,10 @@ Plan: `tasks/plan.md` · Spec: `docs/superpowers/specs/2026-09-20-multi-harness-
 
 ## Phase 1: Text provider seam
 
-- [ ] Task 1: Provider-tagged text profiles + `src/harness/anthropic.ts`
-  - Acceptance: `TextProfile.provider` drives request building; `fieldText` unchanged externally; Anthropic request uses Messages API with `system` + one user message, parsed through `parseFieldValue`.
-  - Verify: `node --test test/text.test.ts test/anthropic.test.ts`, `npm run typecheck`
-  - Files: `src/core/text.ts`, `src/harness/anthropic.ts`, `test/text.test.ts`, `test/anthropic.test.ts`
+- [x] Task 1: Provider-tagged text profiles + `src/harness/anthropic.ts`
+- [x] Task 2: Resolution-order tests
 
-- [ ] Task 2: Resolution-order tests
-  - Acceptance: order proven — `TEXT_MODEL_*` → `ANTHROPIC_API_KEY` → `OPENAI_API_KEY` → `auth.json` → undefined.
-  - Verify: `node --test test/text.test.ts`
-  - Files: `test/text.test.ts`
-
-**Checkpoint:** `npm test` + `npm run typecheck` green.
+**Checkpoint:** `npm test` + `npm run typecheck` green. ✅ (52 tests)
 
 ## Phase 2: CLI
 

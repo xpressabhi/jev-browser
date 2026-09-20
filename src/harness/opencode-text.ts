@@ -1,52 +1,14 @@
-import { mkdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { TEXT_VALUE } from "../core/questions.ts";
-import { parseFieldValue } from "../core/text.ts";
+import {
+  generateTextInSession,
+  helperSession,
+  sessionModel,
+  type ModelChoice,
+  type NativeClient,
+  type NativeTextResult,
+} from "./session-text.ts";
 
-/**
- * Text generation through OpenCode itself.
- *
- * Free Zen models reject direct API calls (Console answers HTTP 403
- * FreeTierError; the Go endpoint answers ModelError). They do work from
- * inside OpenCode, so this module keeps one managed helper session — created
- * in a temp location so it stays out of the user's session list — and runs
- * `session.generate` against a free model there.
- *
- * The client is a structural subset of the OpenCode plugin context; keeping
- * it structural lets this module be tested without the plugin runtime.
- */
-export interface NativeClient {
-  model: {
-    list(): Promise<unknown>;
-  };
-  storage: {
-    get(key: string): Promise<unknown>;
-    set(key: string, value: unknown): Promise<void>;
-  };
-  session: {
-    get(input: { sessionID: string }): Promise<unknown>;
-    create(input: {
-      title?: string | null;
-      model?: { providerID: string; id: string } | null;
-      location?: { directory: string } | null;
-    }): Promise<unknown>;
-    generate(input: { sessionID: string; prompt: string }): Promise<{ text: string }>;
-  };
-}
-
-export interface ModelChoice {
-  providerID: string;
-  id: string;
-}
-
-export interface NativeTextResult {
-  text: string;
-  model: string;
-}
-
-export const HELPER_STORAGE_KEY = "text.helper-session";
-export const HELPER_TITLE = "jev-text helper (managed by jev-browser)";
+export type { ModelChoice, NativeClient, NativeTextResult } from "./session-text.ts";
+export { HELPER_STORAGE_KEY, HELPER_TITLE, generateTextInSession, helperSession, sessionModel } from "./session-text.ts";
 
 /** Free models in preference order. muse-spark is the default pick. */
 export const PREFERRED_FREE_MODELS = [
@@ -97,59 +59,25 @@ export function pickFreeModel(rawModels: readonly ModelRow[]): ModelChoice | und
   );
 }
 
-function helperDirectory(): string {
-  return join(tmpdir(), "jev-browser");
-}
-
 /**
- * Return the managed helper session, creating it on first use. The id is
- * cached in plugin storage and revalidated, so restarts and model changes
- * recreate it cleanly instead of accumulating sessions.
- */
-async function helperSession(client: NativeClient, model: ModelChoice): Promise<string> {
-  const stored = await client.storage.get(HELPER_STORAGE_KEY).catch(() => undefined);
-  const cached =
-    stored && typeof stored === "object" ? (stored as { id?: unknown }).id : undefined;
-  if (typeof cached === "string" && cached) {
-    try {
-      const info = (await client.session.get({ sessionID: cached })) as {
-        model?: { providerID?: string; id?: string; modelID?: string };
-      } | null;
-      const current = info?.model;
-      const currentID = current?.id ?? current?.modelID;
-      if (current?.providerID === model.providerID && currentID === model.id) return cached;
-    } catch {
-      // Session no longer exists; fall through and create a fresh one.
-    }
-  }
-
-  const directory = helperDirectory();
-  mkdirSync(directory, { recursive: true });
-  const created = (await client.session.create({
-    title: HELPER_TITLE,
-    model: { providerID: model.providerID, id: model.id },
-    location: { directory },
-  })) as { id?: unknown } | null;
-  const id = created?.id;
-  if (typeof id !== "string" || !id) throw new Error("Could not create the text helper session");
-  await client.storage.set(HELPER_STORAGE_KEY, { id, model: `${model.providerID}/${model.id}` }).catch(() => undefined);
-  return id;
-}
-
-/**
- * Generate one field value through a free model inside OpenCode. Throws when
- * no free model is available or the reply is unusable, so the caller can fall
- * back to the configured OpenAI-compatible provider.
+ * Text through the model the calling session already uses. Falls back to a free
+ * Zen model when the harness reports no session model, so `TYPESAFE_API_KEY`
+ * alone still works out of the box.
  */
 export async function nativeFieldText(
   client: NativeClient,
   context: Record<string, unknown>,
+  opts: { sessionID?: string; model?: ModelChoice } = {},
 ): Promise<NativeTextResult> {
-  const model = pickFreeModel(normalizeModels(await client.model.list()));
-  if (!model) throw new Error("No free OpenCode Zen model available");
-
-  const sessionID = await helperSession(client, model);
-  const prompt = `${TEXT_VALUE}\n\nContext:\n${JSON.stringify(context)}`;
-  const reply = await client.session.generate({ sessionID, prompt });
-  return { text: parseFieldValue(reply?.text), model: `${model.providerID}/${model.id}` };
+  let model = opts.model;
+  if (!model && opts.sessionID) {
+    try {
+      model = sessionModel(await client.session.get({ sessionID: opts.sessionID }));
+    } catch {
+      // Session is gone; fall through to a free model.
+    }
+  }
+  model ??= pickFreeModel(normalizeModels(await client.model.list()));
+  if (!model) throw new Error("No session or free OpenCode Zen model available");
+  return generateTextInSession(client, model, context);
 }
