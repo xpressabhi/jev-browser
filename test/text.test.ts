@@ -28,7 +28,18 @@ describe("fieldText", () => {
     assert.equal(text, "Zurich");
   });
   it("throws without key and on invalid JSON", async () => {
-    await assert.rejects(() => fieldText({}, { env: { AUTH_PATHS: ["/nonexistent/auth.json"] } }));
+    await assert.rejects(() =>
+      fieldText(
+        {},
+        {
+          env: {
+            AUTH_PATHS: ["/nonexistent/auth.json"],
+            ANTHROPIC_API_KEY: undefined,
+            OPENAI_API_KEY: undefined,
+          },
+        },
+      ),
+    );
     const bad: any = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: '{"nope":1}' } }] }) });
     await assert.rejects(() => fieldText({}, { env, fetchFn: bad }));
   });
@@ -42,11 +53,67 @@ describe("resolveTextProfile", () => {
     return [file];
   }
 
+  it("prefers TEXT_MODEL_API_KEY over every host key", () => {
+    const profile = resolveTextProfile(
+      {
+        TEXT_MODEL_API_KEY: "explicit",
+        TEXT_MODEL_BASE_URL: "http://localhost:11434/v1",
+        TEXT_MODEL: "llama3",
+        ANTHROPIC_API_KEY: "sk-ant",
+        OPENAI_API_KEY: "sk-openai",
+      },
+      "session-1",
+    );
+    assert.equal(profile?.provider, "openai");
+    assert.equal(profile?.key, "explicit");
+    assert.equal(profile?.model, "llama3");
+  });
+
+  it("uses ANTHROPIC_API_KEY before OPENAI_API_KEY", () => {
+    const profile = resolveTextProfile(
+      { ANTHROPIC_API_KEY: "sk-ant", OPENAI_API_KEY: "sk-openai", AUTH_PATHS: ["/nonexistent"] },
+      "session-1",
+    );
+    assert.equal(profile?.provider, "anthropic");
+    assert.equal(profile?.key, "sk-ant");
+  });
+
+  it("falls back to OPENAI_API_KEY with a small default model", () => {
+    const profile = resolveTextProfile(
+      { OPENAI_API_KEY: "sk-openai", AUTH_PATHS: ["/nonexistent"] },
+      "session-1",
+    );
+    assert.equal(profile?.provider, "openai");
+    assert.equal(profile?.base, "https://api.openai.com/v1");
+    assert.equal(profile?.model, "gpt-4o-mini");
+  });
+
+  it("prefers host keys over auth.json providers", () => {
+    const profile = resolveTextProfile(
+      {
+        ANTHROPIC_API_KEY: "sk-ant",
+        AUTH_PATHS: authPaths({ "opencode-go": { type: "api", key: "go-key" } }),
+      },
+      "session-1",
+    );
+    assert.equal(profile?.key, "sk-ant");
+  });
+
+  it("reads an anthropic entry from auth.json", () => {
+    const profile = resolveTextProfile(
+      { AUTH_PATHS: authPaths({ anthropic: { type: "api", key: "sk-ant" } }) },
+      "session-1",
+    );
+    assert.equal(profile?.provider, "anthropic");
+    assert.equal(profile?.key, "sk-ant");
+  });
+
   it("defaults to the cheap opencode-go model", () => {
     const profile = resolveTextProfile(
       { AUTH_PATHS: authPaths({ "opencode-go": { type: "api", key: "go-key" } }) },
       "session-1",
     );
+    assert.equal(profile?.provider, "openai");
     assert.equal(profile?.base, "https://opencode.ai/zen/go/v1");
     assert.equal(profile?.model, "deepseek-v4-flash");
     assert.equal(profile?.key, "go-key");
