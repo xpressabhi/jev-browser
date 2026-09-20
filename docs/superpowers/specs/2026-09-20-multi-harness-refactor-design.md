@@ -43,7 +43,7 @@ First hit wins, every harness:
 2. OpenCode only: active session's selected model via `session.generate` in the
    managed helper session (`src/harness/opencode-text.ts`).
 3. `ANTHROPIC_API_KEY` → Haiku-class model through the Messages API
-   (`src/adapters/anthropic.ts` — new; core stays OpenAI-shaped).
+   (`src/harness/anthropic.ts` — new; core stays OpenAI-shaped).
 4. `OPENAI_API_KEY` → `gpt-4o-mini`-class through the core client.
 5. `auth.json` openrouter / deepseek / opencode-go (existing fallback).
 6. Throw. Never guesses.
@@ -80,7 +80,7 @@ snapshots are parsed first (harness convenience, same code path).
 - `src/core/text.ts`: `resolveTextProfile` gains an Anthropic branch that returns
   a provider-tagged profile; the request path dispatches on `provider`
   (`"openai" | "anthropic"`). `fieldText` signature unchanged.
-- New `src/adapters/anthropic.ts`: builds a Messages API request
+- New `src/harness/anthropic.ts`: builds a Messages API request
   (`max_tokens`, `system`, one user message), parses `content[0].text` through
   `parseFieldValue` so the strict `{text}` contract still holds.
 - `src/cli.ts`: argument parsing (no dependency), stdin helpers, calls core only.

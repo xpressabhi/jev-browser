@@ -11,17 +11,10 @@ Plan: `tasks/plan.md` · Spec: `docs/superpowers/specs/2026-09-20-multi-harness-
 
 ## Phase 2: CLI
 
-- [ ] Task 3: `src/cli.ts`
-  - Acceptance: `observe|decide|step|text`; `-` = stdin; one JSON line on stdout; `{error}` + exit 2 on failure; `--page` accepts raw snapshot or observe output.
-  - Verify: manual pipe against `examples/wiki.ts`-style snapshot
-  - Files: `src/cli.ts`, `package.json` (`bin`, shebang)
+- [x] Task 3: `src/cli.ts`
+- [x] Task 4: `test/cli.test.ts`
 
-- [ ] Task 4: `test/cli.test.ts`
-  - Acceptance: observe parses chrome + playwright snapshots; malformed input exits 2 with no stdout JSON; step/decide injectable via env (`TEXT_MODEL_*` not needed for observe test).
-  - Verify: `node --test test/cli.test.ts`
-  - Files: `test/cli.test.ts`
-
-**Checkpoint:** CLI round trip works with a real recorded snapshot.
+**Checkpoint:** CLI round trip works with a real recorded snapshot. ✅ (live TypeSafe decision + text verified)
 
 ## Phase 3: OpenCode adapter
 
@@ -39,19 +32,8 @@ Plan: `tasks/plan.md` · Spec: `docs/superpowers/specs/2026-09-20-multi-harness-
 
 ## Phase 4: Claude + Codex adapters, docs
 
-- [ ] Task 7: CLI-flavored `skill/SKILL.md`
-  - Acceptance: frontmatter (`name`, `description`) + CLI loop with shell pipes; snapshot never echoed into context.
-  - Verify: frontmatter parses, mirrors Codex/Claude formats
-  - Files: `skill/SKILL.md`
-
-- [ ] Task 8: installers
-  - Acceptance: idempotent (marker-guarded appends), copies skill to `~/.claude/skills/` and `~/.codex/skills/`, ensures `jev` on PATH.
-  - Verify: run twice, `git diff` clean on second run
-  - Files: `adapters/policy.md`, `adapters/claude/install.sh`, `adapters/codex/install.sh`
-
-- [ ] Task 9: docs + spec delta
-  - Acceptance: README has one quickstart per harness; spec mentions `src/harness/anthropic.ts` (not `src/adapters/`).
-  - Verify: read-through
-  - Files: `README.md`, `docs/superpowers/specs/2026-09-20-multi-harness-refactor-design.md`
+- [x] Task 7: CLI-flavored `skill/SKILL.md`
+- [x] Task 8: installers
+- [x] Task 9: docs + spec delta
 
 **Checkpoint:** `npm test` + `npm run typecheck` green; both install scripts idempotent.
