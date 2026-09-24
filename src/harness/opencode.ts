@@ -205,7 +205,7 @@ export default Plugin.define({
         id: "jev-browser" as any,
         name: "jev-browser" as any,
         description:
-          "MANDATORY for any browser work (click, type, navigate, scrape dynamic pages): " +
+          "MANDATORY for browser work on public pages (click, type, navigate, scrape dynamic pages): " +
           "snapshot with chrome MCP (fallback brave), then a fresh jev_step decision before every page action.",
         path: `${ctx.location.directory}/skill/SKILL.md` as any,
         autoinvoke: true,
@@ -225,7 +225,9 @@ export default Plugin.define({
           "content) MUST go through jev-browser: snapshot with chrome MCP (fallback brave), call " +
           "jev_step (or jev_decide) before every page action, jev_text for standalone TYPE_TEXT values. " +
           "Prefer one code-mode script with jev_observe + jev_step so snapshots stay out of context. " +
-          "Never act on a page without a fresh jev decision for that exact snapshot.",
+          "Never act on a page without a fresh jev decision for that exact snapshot. " +
+          "Exception: UI running locally (localhost, 127.0.0.1, *.localhost, LAN IPs, file://) — drive " +
+          "Search via its bench command (skill: search-bench).",
       });
     });
 
