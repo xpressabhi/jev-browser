@@ -5,6 +5,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadEnvFiles, pageFromSource, parseArgs } from "../src/cli.ts";
+import { imageOptions } from "../src/cli.ts";
 
 const CLI = join(import.meta.dirname, "..", "src", "cli.ts");
 
@@ -127,5 +128,71 @@ describe("jev failures", () => {
     const result = run(["help"]);
     assert.equal(result.status, 0);
     assert.match(result.stdout, /jev observe/);
+  });
+});
+
+function pngBytes(width: number, height: number): Uint8Array {
+  const b = new Uint8Array(24);
+  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  b.set([0, 0, 0, 13], 8);
+  b.set([0x49, 0x48, 0x44, 0x52], 12); // "IHDR"
+  const view = new DataView(b.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return b;
+}
+
+function tempFile(name: string, contents: Uint8Array | string): string {
+  const dir = mkdtempSync(join(tmpdir(), "jev-image-"));
+  const file = join(dir, name);
+  writeFileSync(file, contents);
+  return file;
+}
+
+describe("imageOptions", () => {
+  it("rejects --box and --image-scale without --image", () => {
+    assert.throws(() => imageOptions({ box: "always" }), /--box requires --image/);
+    assert.throws(() => imageOptions({ "image-scale": "2" }), /--image-scale requires --image/);
+  });
+
+  it("validates flag values", () => {
+    const png = tempFile("shot.png", pngBytes(800, 600));
+    assert.throws(() => imageOptions({ image: png, box: "sometimes" }), /auto or always/);
+    assert.throws(() => imageOptions({ image: png, "image-scale": "abc" }), /positive number/);
+    assert.throws(() => imageOptions({ image: png, "image-scale": "0" }), /positive number/);
+  });
+
+  it("prepares a screenshot from a file", () => {
+    const png = tempFile("shot.png", pngBytes(800, 600));
+    const opts = imageOptions({ image: png, box: "always", "image-scale": "2" });
+    assert.equal(opts.image?.format, "png");
+    assert.equal(opts.image?.width, 800);
+    assert.equal(opts.image?.height, 600);
+    assert.equal(opts.box, "always");
+    assert.equal(opts.imageScale, 2);
+  });
+
+  it("rejects a non-image file", () => {
+    const text = tempFile("text.png", "hello");
+    assert.throws(() => imageOptions({ image: text }), /not a PNG or JPEG/);
+  });
+});
+
+describe("jev visual flag failures", () => {
+  it("exits 2 when --box is used without --image", () => {
+    const result = run(["decide", "--goal", "g", "--page", "-", "--box", "always"], CHROME_SNAPSHOT);
+    assert.equal(result.status, 2);
+    assert.equal(result.stdout, "");
+    assert.match(JSON.parse(result.stderr).error, /--box requires --image/);
+  });
+
+  it("exits 2 when the screenshot file is missing", () => {
+    const result = run(
+      ["step", "--goal", "g", "--page", "-", "--image", "/nonexistent/shot.png"],
+      CHROME_SNAPSHOT,
+    );
+    assert.equal(result.status, 2);
+    assert.equal(result.stdout, "");
+    assert.ok(JSON.parse(result.stderr).error);
   });
 });

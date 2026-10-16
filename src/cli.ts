@@ -16,7 +16,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { capActions, snapshotToActions } from "./core/elements.ts";
-import { choose } from "./core/jev.ts";
+import { prepareImage } from "./core/image.ts";
+import { VISUAL_CHOICE, choose, type ChooseOptions } from "./core/jev.ts";
 import { planStep } from "./core/step.ts";
 import { fieldText } from "./core/text.ts";
 import type { HistoryEntry, JevChoice, ObservedAction, PageState } from "./core/types.ts";
@@ -113,6 +114,31 @@ function readJSON(source: string, name: string): unknown {
   }
 }
 
+/**
+ * Visual-mode flags: read and validate the screenshot before any network
+ * call, so the decision core receives a request-ready image. Flags that only
+ * make sense with an image are rejected without one.
+ */
+export function imageOptions(flags: Flags): ChooseOptions {
+  if (!flags.image) {
+    if (flags.box !== undefined) throw new Error("--box requires --image");
+    if (flags["image-scale"] !== undefined) throw new Error("--image-scale requires --image");
+    return {};
+  }
+  let box: ChooseOptions["box"];
+  if (flags.box !== undefined) {
+    if (flags.box !== "auto" && flags.box !== "always") throw new Error("--box must be auto or always");
+    box = flags.box;
+  }
+  let imageScale: number | undefined;
+  if (flags["image-scale"] !== undefined) {
+    imageScale = Number(flags["image-scale"]);
+    if (!Number.isFinite(imageScale) || imageScale <= 0) throw new Error("--image-scale must be a positive number");
+  }
+  const image = prepareImage(new Uint8Array(readFileSync(flags.image)));
+  return { image, box, imageScale };
+}
+
 function fingerprint(page: { url: string; title: string; actions: ObservedAction[] }): string {
   const body = `${page.url}\u0000${page.title}\u0000${page.actions.map((a) => a.node).join(",")}`;
   let hash = 5381;
@@ -201,7 +227,7 @@ export async function decideCommand(flags: Flags) {
   if (!goal) throw new Error("Missing --goal");
   const page = pageFromSource(readJSON(flags.page, "page"), flags.url, flags.title);
   const history = flags.history ? (readJSON(flags.history, "history") as HistoryEntry[]) : [];
-  return publicDecision(await choose(page, goal, history));
+  return publicDecision(await choose(page, goal, history, imageOptions(flags)));
 }
 
 export async function stepCommand(flags: Flags) {
@@ -210,19 +236,29 @@ export async function stepCommand(flags: Flags) {
   const page = pageFromSource(readJSON(flags.page, "page"), flags.url, flags.title);
   const history = flags.history ? (readJSON(flags.history, "history") as HistoryEntry[]) : [];
   let textModel: string | null = null;
-  const result = await planStep(page, goal, history, {
-    textFor: async (context) => {
-      const resolved = await fieldText(context, { sessionID: process.env.JEV_SESSION_ID });
-      textModel = resolved.meta.model;
-      return resolved.text;
+  const result = await planStep(
+    page,
+    goal,
+    history,
+    {
+      textFor: async (context) => {
+        const resolved = await fieldText(context, { sessionID: process.env.JEV_SESSION_ID });
+        textModel = resolved.meta.model;
+        return resolved.text;
+      },
     },
-  });
-  const action = result.operation === "TYPE_TEXT" ? result.choice : null;
-  const target = action ? page.actions.find((candidate) => candidate.id === action) : undefined;
+    imageOptions(flags),
+  );
+  const actionId = result.operation === "TYPE_TEXT" ? result.choice : null;
+  const target = actionId ? page.actions.find((candidate) => candidate.id === actionId) : undefined;
+  const action =
+    result.choice === VISUAL_CHOICE
+      ? { operation: "CLICK", node: "", visual: true, kind: "click", label: "visual target", role: null, value: null }
+      : describeAction(result.operation, target);
   return {
     ...publicDecision(result),
     text_model: textModel,
-    action: describeAction(result.operation, target),
+    action,
   };
 }
 
@@ -236,12 +272,18 @@ const HELP = `jev — Jev decisions for any browser harness
 
   jev observe --snapshot - [--url U] [--title T] [--text -]
   jev decide  --goal G --page - [--history -] [--url U] [--title T]
+              [--image shot.png] [--box auto|always] [--image-scale S]
   jev step    --goal G --page - [--history -] [--url U] [--title T]
+              [--image shot.png] [--box auto|always] [--image-scale S]
   jev text    --context -
 
 Reads "-" from stdin, writes one JSON line to stdout.
 Keys: TYPESAFE_API_KEY (required), TEXT_MODEL_API_KEY / ANTHROPIC_API_KEY /
-OPENAI_API_KEY (optional text model), or a .env file.`;
+OPENAI_API_KEY (optional text model), or a .env file.
+Visual mode: --image passes a PNG/JPEG screenshot (280–1568 px per side);
+Box needs Jev 1.14, so the model defaults to jev-preview unless TYPESAFE_MODEL
+is set. --box always boxes node targets too; --image-scale adds viewport
+coordinates for the box center.`;
 
 export async function main(argv: string[]): Promise<number> {
   loadEnvFiles(envPaths());

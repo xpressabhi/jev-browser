@@ -1,4 +1,4 @@
-import { choose } from "./jev.ts";
+import { choose, type ChooseOptions } from "./jev.ts";
 import { fieldContext, fieldText } from "./text.ts";
 import type { HistoryEntry, JevChoice, PageState } from "./types.ts";
 
@@ -27,8 +27,9 @@ export async function planStep(
   goal: string,
   history: HistoryEntry[] = [],
   deps: StepDeps = {},
+  opts: ChooseOptions = {},
 ): Promise<StepResult> {
-  const decide = deps.decide ?? ((page, task, recent) => choose(page, task, recent));
+  const decide = deps.decide ?? ((page, task, recent) => choose(page, task, recent, opts));
   const decision = await decide(state, goal, history);
   if (decision.operation !== "TYPE_TEXT") return { ...decision, text: null };
 
