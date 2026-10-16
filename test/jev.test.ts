@@ -141,18 +141,37 @@ describe("visual mode requests", () => {
 
   it("resolves a visual target without a target question", async () => {
     const canvasPage = { ...page, actions: [] };
-    const { calls, fetchFn } = capturingFetch({
-      model: "jev-preview",
-      answers: {
-        operation: { choice: "CLICK", probabilities: { CLICK: 1, DONE: 0, BLOCKED: 0 }, confidence: 1 },
-      },
-    });
+    const calls: any[] = [];
+    const fetchFn: any = async (_url: string, init: any) => {
+      calls.push(JSON.parse(init.body));
+      const body =
+        calls.length === 1
+          ? {
+              model: "jev-preview",
+              answers: {
+                operation: { choice: "CLICK", probabilities: { CLICK: 1, DONE: 0, BLOCKED: 0 }, confidence: 1 },
+              },
+            }
+          : {
+              model: "jev-1.14.0",
+              answers: {
+                target_box: {
+                  type: "box",
+                  box: { top: 0.1, bottom: 0.2, left: 0.3, right: 0.4 },
+                  confidence: 0.9,
+                },
+                target_present: { type: "noul", noul: 0.9 },
+              },
+            };
+      return { ok: true, status: 200, json: async () => body };
+    };
     const decision = await choose(canvasPage, "goal", [], { env: { TYPESAFE_API_KEY: "k" }, fetchFn, image: shot });
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 2);
     assert.equal(decision.choice, "VISUAL_CLICK");
     assert.equal(decision.operation, "CLICK");
     assert.equal(decision.target, "visual");
     assert.equal(decision.probabilities.VISUAL_CLICK, 1);
+    assert.equal(calls[0].questions.click_target, undefined);
   });
 
   it("TYPESAFE_MODEL still wins in image mode", async () => {
@@ -168,5 +187,145 @@ describe("visual mode requests", () => {
       image: shot,
     });
     assert.equal(calls[0].body.model, "jev-1.14.0");
+  });
+});
+
+describe("box phase", () => {
+  const shot = { format: "png" as const, width: 800, height: 600, data_base64: "aGk=" };
+  const canvasPage = { url: "u", title: "t", text: "", actions: [] as any[] };
+
+  const canvasAnswers = {
+    model: "jev-preview",
+    answers: {
+      operation: { choice: "CLICK", probabilities: { CLICK: 1, DONE: 0, BLOCKED: 0 }, confidence: 1 },
+    },
+  };
+  const nodeAnswers = {
+    model: "jev-preview",
+    answers: {
+      operation: { choice: "CLICK", probabilities: { CLICK: 1, TYPE_TEXT: 0, DONE: 0, BLOCKED: 0 }, confidence: 1 },
+      click_target: { choice: "1", probabilities: { "1": 1 }, confidence: 1 },
+    },
+  };
+  const boxAnswers = {
+    model: "jev-1.14.0",
+    answers: {
+      target_box: {
+        type: "box",
+        box: { top: 0.25, bottom: 0.82, left: 0.44, right: 0.84 },
+        confidence: 0.92,
+      },
+      target_present: { type: "noul", noul: 0.93 },
+    },
+    usage: { input_tokens: 3900 },
+  };
+
+  function scriptedFetch(script: Array<unknown | { fail: number }>) {
+    const calls: Array<{ body: any; headers: Record<string, string> }> = [];
+    let i = 0;
+    const fetchFn: any = async (_url: string, init: any) => {
+      const step = script[Math.min(i, script.length - 1)];
+      calls.push({ body: JSON.parse(init.body), headers: init.headers });
+      i += 1;
+      if (step && typeof step === "object" && "fail" in (step as any)) {
+        return { ok: false, status: (step as any).fail, json: async () => ({}) };
+      }
+      return { ok: true, status: 200, json: async () => step };
+    };
+    return { calls, fetchFn };
+  }
+
+  const env = { TYPESAFE_API_KEY: "k" };
+
+  it("visual target runs phase 2 and returns coordinates", async () => {
+    const { calls, fetchFn } = scriptedFetch([canvasAnswers, boxAnswers]);
+    const d = await choose(canvasPage, "goal", [], { env, fetchFn, image: shot });
+    assert.equal(calls.length, 2);
+    assert.equal(d.choice, "VISUAL_CLICK");
+    assert.deepEqual(d.image!.pixel, {
+      x: 352,
+      y: 150,
+      width: 320,
+      height: 342,
+      center: { x: 512, y: 321 },
+    });
+    assert.equal(d.image!.present, 0.93);
+    assert.equal(d.image!.confidence, 0.92);
+    assert.equal(calls[1].body.questions.target_box.type, "box");
+    assert.equal(calls[1].headers["TypeSafe-Danger-Zone-Images"], "true");
+    assert.notEqual(calls[0].body.state.screenshot, calls[1].body.state.screenshot);
+  });
+
+  it("imageScale adds viewport coordinates", async () => {
+    const { fetchFn } = scriptedFetch([canvasAnswers, boxAnswers]);
+    const d = await choose(canvasPage, "goal", [], { env, fetchFn, image: shot, imageScale: 2 });
+    assert.deepEqual(d.image!.viewport, { x: 256, y: 161 });
+  });
+
+  it("node targets skip phase 2 in auto mode", async () => {
+    const { calls, fetchFn } = scriptedFetch([nodeAnswers, boxAnswers]);
+    const d = await choose(page, "goal", [], { env, fetchFn, image: shot });
+    assert.equal(calls.length, 1);
+    assert.equal(d.choice, "click-n1");
+    assert.equal(d.image, undefined);
+  });
+
+  it("box always also boxes node targets", async () => {
+    const { calls, fetchFn } = scriptedFetch([nodeAnswers, boxAnswers]);
+    const d = await choose(page, "goal", [], { env, fetchFn, image: shot, box: "always" });
+    assert.equal(calls.length, 2);
+    assert.equal(d.choice, "click-n1");
+    assert.ok(d.image!.box);
+    assert.ok(String(calls[1].body.questions.target_box.instructions).includes("Search"));
+  });
+
+  it("visual target fails the step when phase 2 fails", async () => {
+    const { fetchFn } = scriptedFetch([canvasAnswers, { fail: 500 }]);
+    await assert.rejects(
+      () => choose(canvasPage, "goal", [], { env, fetchFn, image: shot }),
+      /Box request failed for the visual target; no action executed/,
+    );
+  });
+
+  it("box always degrades to image.error for node targets", async () => {
+    const { fetchFn } = scriptedFetch([nodeAnswers, { fail: 500 }]);
+    const d = await choose(page, "goal", [], { env, fetchFn, image: shot, box: "always" });
+    assert.equal(d.choice, "click-n1");
+    assert.ok(d.image!.error);
+    assert.equal(d.image!.box, undefined);
+  });
+
+  it("malformed box answers follow the same split", async () => {
+    const malformed = {
+      model: "jev-1.14.0",
+      answers: {
+        target_box: {
+          type: "box",
+          box: { top: 0.25, bottom: 0.82, left: 0.6, right: 0.6 },
+          confidence: 0.9,
+        },
+        target_present: { type: "noul", noul: 0.9 },
+      },
+    };
+    await assert.rejects(
+      () => choose(canvasPage, "goal", [], { env, fetchFn: scriptedFetch([canvasAnswers, malformed]).fetchFn, image: shot }),
+      /malformed box/,
+    );
+    const d = await choose(page, "goal", [], {
+      env,
+      fetchFn: scriptedFetch([nodeAnswers, malformed]).fetchFn,
+      image: shot,
+      box: "always",
+    });
+    assert.match(d.image!.error!, /malformed box/);
+  });
+
+  it("a known 1.13 pin pre-empts the box phase", async () => {
+    const { calls, fetchFn } = scriptedFetch([canvasAnswers, boxAnswers]);
+    await assert.rejects(
+      () => choose(canvasPage, "goal", [], { env: { TYPESAFE_API_KEY: "k", TYPESAFE_MODEL: "jev-latest" }, fetchFn, image: shot }),
+      /Jev 1.14/,
+    );
+    assert.equal(calls.length, 1);
   });
 });

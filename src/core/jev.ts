@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { readProviderKey } from "./auth.ts";
 import { buildElementTable, capActions } from "./elements.ts";
+import { boxToPixels, pixelToViewport, validateBox } from "./image.ts";
 import { NEXT_ACTION, TARGET } from "./questions.ts";
-import type { HistoryEntry, JevChoice, PageState, Screenshot } from "./types.ts";
+import type { HistoryEntry, ImageResult, JevChoice, ObservedAction, PageState, Screenshot } from "./types.ts";
 
 export const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
 
@@ -11,6 +12,10 @@ const DEFAULT_MODEL = "jev-latest";
 export const IMAGE_MODEL = "jev-preview";
 /** Resolved choice for a click that has no observed element (coordinates come from the box). */
 export const VISUAL_CHOICE = "VISUAL_CLICK";
+// Models that accept images but not Box questions; a box phase with one of
+// these is rejected before the call with a fix instead of the API's raw 400.
+const KNOWN_1_13 = new Set(["jev-latest", "jev-1.13.0"]);
+const BOX_MODEL_ERROR = "Box questions need Jev 1.14; unset TYPESAFE_MODEL or set it to jev-preview.";
 const RETRYABLE_STATUSES = new Set([429, 503, 529]);
 const OPERATION_HELP: Record<string, string> = {
   CLICK: "Click an observed element: button, link, menu item, autocomplete suggestion, or calendar day.",
@@ -153,6 +158,64 @@ export function buildRequest(state: PageState, goal: string, history: HistoryEnt
   return { body, elements, targets, controls, operations, visualClick };
 }
 
+// Phase 2: locate the chosen target on the screenshot with a Box question and
+// check its presence with a Noul in the same request (docs: a Box answer is
+// always a box, so presence is how it is trusted). Throws on any failure; the
+// caller applies the degradation rules.
+interface LocateInput {
+  image: Screenshot;
+  model: string;
+  url: string;
+  title: string;
+  goal: string;
+  action?: ObservedAction;
+  imageScale?: number;
+}
+
+async function locate(key: string, input: LocateInput, fetchFn: typeof fetch): Promise<ImageResult> {
+  const { image, model, url, title, goal, action, imageScale } = input;
+  const started = Date.now();
+  const ref = randomUUID();
+  const boxInstructions = action
+    ? `the element labeled "${action.label}"${action.role ? ` (role: ${action.role})` : ""} on the page`
+    : `the element to click to advance this goal: ${goal}`;
+  const presenceInstructions = action
+    ? `Is the element labeled "${action.label}" visible in \`screenshot\`?`
+    : "Is the element to click to advance this goal visible in `screenshot`?";
+  const body = {
+    model,
+    state: { page: { url, title }, screenshot: ref },
+    assets: { [ref]: { type: "image", format: image.format, data_base64: image.data_base64 } },
+    questions: {
+      target_box: { type: "box", instructions: boxInstructions },
+      target_present: { type: "noul", instructions: presenceInstructions },
+    },
+  };
+  const result = await request(key, body, fetchFn, { "TypeSafe-Danger-Zone-Images": "true" });
+  const { box, confidence } = validateBox(result.answers?.target_box);
+  const present = result.answers?.target_present?.noul;
+  if (typeof present !== "number" || !Number.isFinite(present) || present < 0 || present > 1) {
+    throw new Error("TypeSafe returned a malformed noul.");
+  }
+  const pixel = boxToPixels(box, image.width, image.height);
+  const out: ImageResult = {
+    width: image.width,
+    height: image.height,
+    box,
+    pixel,
+    present,
+    confidence,
+    model: result.model,
+    usage: result.usage,
+    latency_ms: Date.now() - started,
+  };
+  if (imageScale !== undefined) {
+    if (!Number.isFinite(imageScale) || imageScale <= 0) throw new Error("imageScale must be a positive number.");
+    out.viewport = pixelToViewport(pixel.center, imageScale);
+  }
+  return out;
+}
+
 export async function choose(
   state: PageState,
   goal: string,
@@ -204,6 +267,40 @@ export async function choose(
     probabilities[choice] = operationAnswer.probabilities[operation];
   }
 
+  const chosenAction = candidates && target ? candidates[target] : undefined;
+  let imageResult: ImageResult | undefined;
+  if (image && (choice === VISUAL_CHOICE || (opts.box === "always" && chosenAction !== undefined))) {
+    if (KNOWN_1_13.has(body.model)) throw new Error(BOX_MODEL_ERROR);
+    const boxStarted = Date.now();
+    try {
+      imageResult = await locate(
+        key,
+        {
+          image,
+          model: body.model,
+          url: state.url,
+          title: state.title,
+          goal,
+          action: chosenAction,
+          imageScale: opts.imageScale,
+        },
+        opts.fetchFn ?? fetch,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (choice === VISUAL_CHOICE) {
+        throw new Error(`Box request failed for the visual target; no action executed. (${message})`);
+      }
+      // The node action is intact: keep the decision, report the box failure.
+      imageResult = {
+        width: image.width,
+        height: image.height,
+        latency_ms: Date.now() - boxStarted,
+        error: message,
+      };
+    }
+  }
+
   return {
     choice,
     operation,
@@ -217,5 +314,6 @@ export async function choose(
     model: result.model,
     usage: result.usage,
     latency_ms: Date.now() - started,
+    ...(imageResult ? { image: imageResult } : {}),
   };
 }
