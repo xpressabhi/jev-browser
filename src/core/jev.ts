@@ -1,11 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { readProviderKey } from "./auth.ts";
 import { buildElementTable, capActions } from "./elements.ts";
 import { NEXT_ACTION, TARGET } from "./questions.ts";
-import type { HistoryEntry, JevChoice, PageState } from "./types.ts";
+import type { HistoryEntry, JevChoice, PageState, Screenshot } from "./types.ts";
 
 export const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
 
 const DEFAULT_MODEL = "jev-latest";
+/** Box questions need Jev 1.14; image requests default to the preview alias. */
+export const IMAGE_MODEL = "jev-preview";
+/** Resolved choice for a click that has no observed element (coordinates come from the box). */
+export const VISUAL_CHOICE = "VISUAL_CLICK";
 const RETRYABLE_STATUSES = new Set([429, 503, 529]);
 const OPERATION_HELP: Record<string, string> = {
   CLICK: "Click an observed element: button, link, menu item, autocomplete suggestion, or calendar day.",
@@ -21,16 +26,33 @@ export interface JevEnv {
   AUTH_PATHS?: string[];
 }
 
+export interface ChooseOptions {
+  env?: JevEnv;
+  fetchFn?: typeof fetch;
+  image?: Screenshot;
+  box?: "auto" | "always";
+  imageScale?: number;
+}
+
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function request(key: string, body: unknown, fetchFn: typeof fetch): Promise<any> {
+async function request(
+  key: string,
+  body: unknown,
+  fetchFn: typeof fetch,
+  extraHeaders: Record<string, string> = {},
+): Promise<any> {
   let failure: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     let response: Response;
     try {
       response = await fetchFn(TYPESAFE_URL, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${key}`,
+          ...extraHeaders,
+        },
         body: JSON.stringify(body),
       });
     } catch {
@@ -71,13 +93,17 @@ export function validateChoice(answer: any, ids: Record<string, unknown> | strin
   }
 }
 
-export function buildRequest(state: PageState, goal: string, history: HistoryEntry[]) {
+export function buildRequest(state: PageState, goal: string, history: HistoryEntry[], image?: Screenshot) {
   // Cap each action kind deterministically so a heavy page cannot push a
   // question over the endpoint's 255-choice limit, and so decisions stay small.
   const { elements, targets, controls } = buildElementTable(capActions(state.actions));
 
   const operations: Record<string, string> = {};
   for (const name of Object.keys(targets)) operations[name] = OPERATION_HELP[name] ?? `Perform ${name}.`;
+  // With an image and no clickable elements, CLICK stays on the menu as a
+  // visual target; its coordinates come from the box phase.
+  const visualClick = Boolean(image) && !targets.CLICK;
+  if (visualClick) operations.CLICK = "Click a spot on the screenshot when no observed element fits.";
   for (const [name, control] of Object.entries(controls)) operations[name] = control.label;
   operations.DONE = DONE_CRITERION;
   operations.BLOCKED = BLOCKED_CRITERION;
@@ -104,7 +130,7 @@ export function buildRequest(state: PageState, goal: string, history: HistoryEnt
     };
   }
 
-  const body = {
+  const body: Record<string, any> = {
     model: DEFAULT_MODEL,
     state: {
       page: { url: state.url, title: state.title, text: state.text },
@@ -116,14 +142,22 @@ export function buildRequest(state: PageState, goal: string, history: HistoryEnt
     questions,
   };
 
-  return { body, elements, targets, controls, operations };
+  if (image) {
+    // A fresh reference per request (docs advice: unguessable, cannot occur in
+    // page text by accident), referenced once from state so one copy is sent.
+    const ref = randomUUID();
+    body.state.screenshot = ref;
+    body.assets = { [ref]: { type: "image", format: image.format, data_base64: image.data_base64 } };
+  }
+
+  return { body, elements, targets, controls, operations, visualClick };
 }
 
 export async function choose(
   state: PageState,
   goal: string,
   history: HistoryEntry[],
-  opts: { env?: JevEnv; fetchFn?: typeof fetch } = {},
+  opts: ChooseOptions = {},
 ): Promise<JevChoice> {
   const env: JevEnv = opts.env ?? {
     TYPESAFE_API_KEY: process.env.TYPESAFE_API_KEY,
@@ -132,11 +166,17 @@ export async function choose(
   const key = env.TYPESAFE_API_KEY ?? readProviderKey(["typesafe"], env.AUTH_PATHS);
   if (!key) throw new Error("No TypeSafe key available; no action executed.");
 
-  const { body, targets, controls, operations } = buildRequest(state, goal, history);
-  (body as Record<string, unknown>).model = env.TYPESAFE_MODEL || DEFAULT_MODEL;
+  const image = opts.image;
+  const { body, targets, controls, operations, visualClick } = buildRequest(state, goal, history, image);
+  body.model = env.TYPESAFE_MODEL || (image ? IMAGE_MODEL : DEFAULT_MODEL);
 
   const started = Date.now();
-  const result = await request(key, body, opts.fetchFn ?? fetch);
+  const result = await request(
+    key,
+    body,
+    opts.fetchFn ?? fetch,
+    image ? { "TypeSafe-Danger-Zone-Images": "true" } : {},
+  );
   const operationAnswer = validateChoice(result.answers?.operation, operations);
   const operation = operationAnswer.choice as string;
 
@@ -153,6 +193,12 @@ export async function choose(
     for (const [index, action] of Object.entries(candidates)) {
       probabilities[action.id] = targetAnswer.probabilities[index];
     }
+  } else if (operation === "CLICK" && visualClick) {
+    // The visual CLICK has no candidates to choose from: it resolves directly,
+    // and no target question was asked.
+    choice = VISUAL_CHOICE;
+    target = "visual";
+    probabilities[VISUAL_CHOICE] = operationAnswer.probabilities[operation] ?? 0;
   } else {
     choice = operation in controls ? controls[operation].id : operation;
     probabilities[choice] = operationAnswer.probabilities[operation];

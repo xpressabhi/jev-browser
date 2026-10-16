@@ -83,3 +83,90 @@ describe("choose", () => {
     );
   });
 });
+
+describe("visual mode requests", () => {
+  const shot = { format: "png" as const, width: 800, height: 600, data_base64: "aGk=" };
+
+  function capturingFetch(answerBody: unknown) {
+    const calls: Array<{ body: any; headers: Record<string, string> }> = [];
+    const fetchFn: any = async (_url: string, init: any) => {
+      calls.push({ body: JSON.parse(init.body), headers: init.headers });
+      return { ok: true, status: 200, json: async () => answerBody };
+    };
+    return { calls, fetchFn };
+  }
+
+  const clickAnswers = {
+    model: "jev-latest",
+    answers: {
+      operation: { choice: "CLICK", probabilities: { CLICK: 1, TYPE_TEXT: 0, DONE: 0, BLOCKED: 0 }, confidence: 1 },
+      click_target: { choice: "1", probabilities: { "1": 1 }, confidence: 1 },
+    },
+  };
+
+  it("image-less requests carry no assets and keep the default model", async () => {
+    const { calls, fetchFn } = capturingFetch(clickAnswers);
+    await choose(page, "g", [], { env: { TYPESAFE_API_KEY: "k" }, fetchFn });
+    const { body, headers } = calls[0];
+    assert.equal("assets" in body, false);
+    assert.equal(body.state.screenshot, undefined);
+    assert.equal(headers["TypeSafe-Danger-Zone-Images"], undefined);
+    assert.equal(body.model, "jev-latest");
+    assert.equal(buildRequest(page, "goal", []).visualClick, false);
+  });
+
+  it("image requests carry one asset, the state reference, the header, and jev-preview", async () => {
+    const { body, visualClick } = buildRequest(page, "goal", [], shot);
+    const ref = Object.keys((body as any).assets)[0];
+    assert.equal((body.state as any).screenshot, ref);
+    assert.deepEqual((body as any).assets[ref], { type: "image", format: "png", data_base64: "aGk=" });
+    assert.equal(visualClick, false);
+
+    const { calls, fetchFn } = capturingFetch({ ...clickAnswers, model: "jev-preview" });
+    await choose(page, "goal", [], { env: { TYPESAFE_API_KEY: "k" }, fetchFn, image: shot });
+    assert.equal(calls[0].headers["TypeSafe-Danger-Zone-Images"], "true");
+    assert.equal(calls[0].body.model, "jev-preview");
+    assert.equal(calls[0].body.state.screenshot, Object.keys(calls[0].body.assets)[0]);
+  });
+
+  it("offers a visual CLICK only when zero click candidates and an image", () => {
+    const canvasPage = { ...page, actions: [] };
+    const withImage = buildRequest(canvasPage, "goal", [], shot);
+    assert.equal(withImage.visualClick, true);
+    assert.equal(typeof (withImage.body.questions as any).operation.criteria.CLICK, "string");
+    const withoutImage = buildRequest(canvasPage, "goal", []);
+    assert.equal(withoutImage.visualClick, false);
+    assert.equal((withoutImage.body.questions as any).operation.criteria.CLICK, undefined);
+  });
+
+  it("resolves a visual target without a target question", async () => {
+    const canvasPage = { ...page, actions: [] };
+    const { calls, fetchFn } = capturingFetch({
+      model: "jev-preview",
+      answers: {
+        operation: { choice: "CLICK", probabilities: { CLICK: 1, DONE: 0, BLOCKED: 0 }, confidence: 1 },
+      },
+    });
+    const decision = await choose(canvasPage, "goal", [], { env: { TYPESAFE_API_KEY: "k" }, fetchFn, image: shot });
+    assert.equal(calls.length, 1);
+    assert.equal(decision.choice, "VISUAL_CLICK");
+    assert.equal(decision.operation, "CLICK");
+    assert.equal(decision.target, "visual");
+    assert.equal(decision.probabilities.VISUAL_CLICK, 1);
+  });
+
+  it("TYPESAFE_MODEL still wins in image mode", async () => {
+    const { calls, fetchFn } = capturingFetch({
+      model: "x",
+      answers: {
+        operation: { choice: "DONE", probabilities: { CLICK: 0, TYPE_TEXT: 0, DONE: 1, BLOCKED: 0 }, confidence: 1 },
+      },
+    });
+    await choose(page, "goal", [], {
+      env: { TYPESAFE_API_KEY: "k", TYPESAFE_MODEL: "jev-1.14.0" },
+      fetchFn,
+      image: shot,
+    });
+    assert.equal(calls[0].body.model, "jev-1.14.0");
+  });
+});
