@@ -42,6 +42,44 @@ export interface HistoryEntry {
   page_changed?: boolean | null;
 }
 
+export type ImageFormat = "png" | "jpg";
+
+export interface Screenshot {
+  format: ImageFormat;
+  width: number;
+  height: number;
+  data_base64: string;
+}
+
+export interface BoxEdges {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+export interface PixelRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  center: { x: number; y: number };
+}
+
+export interface ImageResult {
+  width: number;
+  height: number;
+  box?: BoxEdges;
+  pixel?: PixelRect;
+  viewport?: { x: number; y: number };
+  present?: number;
+  confidence?: number;
+  model?: unknown;
+  usage?: unknown;
+  latency_ms: number;
+  error?: string;
+}
+
 export interface JevChoice {
   choice: string;
   operation: string;
@@ -56,4 +94,5 @@ export interface JevChoice {
   usage?: unknown;
   latency_ms: number;
   degraded?: boolean;
+  image?: ImageResult;
 }
