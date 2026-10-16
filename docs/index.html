@@ -194,10 +194,11 @@
     <p class="section-lede">Bounded multiple-choice questions and text-only payloads. The core is harness-agnostic; one code-mode script or CLI pipe can run the whole cycle with snapshots kept out of the model context.</p>
     <ul class="stats">
       <li><span class="s-n mono">378–419 ms</span><span class="s-l">decision latency in the live trace</span></li>
-      <li><span class="s-n mono">0</span><span class="s-l">screenshots or image tokens sent to Jev</span></li>
+      <li><span class="s-n mono">0</span><span class="s-l">screenshots or image tokens sent to Jev by default</span></li>
       <li><span class="s-n mono">≤255</span><span class="s-l">choices offered per question</span></li>
       <li><span class="s-n mono">≤6,000</span><span class="s-l">characters of page text per request</span></li>
     </ul>
+    <p class="section-lede">Opt-in visual mode passes one screenshot per cycle: Jev sees the page, and Box questions return pixel coordinates for targets that have no DOM node — canvas UIs, unlabeled icons. Text-only cycles are unchanged and one extra model call only runs when it is needed.</p>
     <p class="more">How the fast path scripts it: <a href="https://github.com/xpressabhi/jev-browser/blob/main/README.md#loop">README → Loop</a>.</p>
   </section>
 

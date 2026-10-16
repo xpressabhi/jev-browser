@@ -5,7 +5,9 @@ dependencies.
 
 One decision core, any harness. Jev (`TypeSafe System One`) picks one operation
 and one observed target per cycle; a small model writes text only for
-`TYPE_TEXT`. No screenshots in the loop, visible text only. The decision core
+`TYPE_TEXT`. No screenshots in the loop by default — opt-in visual mode passes
+one screenshot per cycle so Box questions can return pixel coordinates when a
+page has no clickable DOM nodes. The decision core
 and the `jev` CLI carry no harness imports — OpenCode, Claude Code, and Codex
 are just ways to wire it up.
 
@@ -137,6 +139,40 @@ done
    stop at 60 steps. Each decision is consumed once — a retry must not
    double-click. Three no-change non-wait actions in a row stop the run.
 
+## Visual mode (images + Box)
+
+Pass a screenshot and Jev can see the page and return pixel coordinates for
+elements a snapshot describes poorly. Opt-in per call; text-only cycles are
+unchanged.
+
+```sh
+# save a viewport screenshot with the browser MCP, then:
+jev step --goal G --page - --image shot.png [--box always] [--image-scale 2]
+```
+
+- **Phase 1** asks the usual operation/target questions with the screenshot in
+  the request state, so choices are grounded in what is rendered. When the page
+  offers no clickable DOM candidates, `CLICK` stays on the menu as a visual
+  target.
+- **Phase 2** runs only for that visual target (or for node targets with
+  `--box always`): one Box question locates the chosen element and one Noul
+  reports whether it is visible. The decision gains `image.box` (fractions),
+  `image.pixel` (image-space rect + center), `image.present`, and
+  `image.confidence`. `--image-scale 2` adds `image.viewport` (CSS px for the
+  box center; for full-page screenshots add the scroll offset yourself).
+
+How to act: **node present → act on the node**; `action.visual` → click
+`image.pixel.center` (or `image.viewport`), gated on `image.present`. There is
+no official presence threshold; start at 0.5 and tune on your pages.
+
+Limits: PNG/JPEG, 280–1568 px per side, ≤16 MiB — resize or use a viewport
+screenshot. Box questions need Jev 1.14, so image mode defaults the model to
+`jev-preview` unless `TYPESAFE_MODEL` is set; a pinned 1.13 name fails fast
+with the fix. Cost: one extra model call per visual cycle; the second
+request's `usage` / `latency_ms` are reported under `image`. If the box call
+fails, a node-target decision survives with `image.error`; a visual target
+fails outright rather than guess a click point.
+
 ## CLI
 
 `jev` decides; it never touches a browser. Every command reads `-` from stdin
@@ -146,12 +182,17 @@ and writes one compact JSON line to stdout (`{error}` + exit 2 on failure).
 jev observe --snapshot - [--url U] [--title T] [--text -]
   → {page:{url,title,text,fingerprint}, actions[], counts{}}
 jev decide  --goal G --page - [--history -] [--url U] [--title T]
+            [--image shot.png] [--box auto|always] [--image-scale S]
   → {choice, operation, target, confidence, probabilities, latency_ms}
 jev step    --goal G --page - [--history -]
-  → decide output + {text, text_model, action:{operation,node,kind,label,role,value}}
+            [--image shot.png] [--box auto|always] [--image-scale S]
+  → decide output + {text, text_model, action:{operation,node,kind,label,role,value,visual}}
 jev text    --context -
   → {text, model}
 ```
+
+--image passes a PNG/JPEG screenshot into the decision (visual mode).
+--box always also asks for the chosen node element's box, not just visual targets.
 
 `--page -` accepts an `observe` result or a raw chrome/Playwright snapshot.
 `observe` caps each action kind at 100 (the endpoint rejects questions with over
@@ -161,10 +202,11 @@ to reach elements beyond the cap.
 ### Plugin tools (OpenCode)
 
 - `jev_observe` — `{snapshot, url?, title?, text?}` → `{page, actions, counts}`.
-- `jev_step` — `{goal, page {url,title,text,actions[]}, history?}` → validated
-  decision with `text` resolved in the same call for `TYPE_TEXT`.
-- `jev_decide` — `{goal, page, history?}` →
-  `{choice, operation, target, probabilities, latency_ms}`.
+- `jev_step` — `{goal, page {url,title,text,actions[]}, history?, imagePath?, box?, imageScale?}` →
+  validated decision with `text` resolved in the same call for `TYPE_TEXT` and
+  `visual` set for coordinate targets.
+- `jev_decide` — `{goal, page, history?, imagePath?, box?}` →
+  `{choice, operation, target, probabilities, latency_ms, image?}`.
 - `jev_text` — `fieldContext {goal, field, page, recent_actions}` →
   `{text, model}`.
 
@@ -205,13 +247,17 @@ Upstream OpenRouter example: `TEXT_MODEL_BASE_URL=https://openrouter.ai/api/v1`,
   values are never hardcoded or guessed.
 - **One decision per snapshot** — a decision is tied to the nodes it was chosen
   from. If the page changed, re-observe and decide again.
-- **Visible text only** — no screenshots; page text is capped near 6,000
-  characters and treated as untrusted data, never as instructions.
+- **Visible text only by default** — screenshots ride along only when `--image`
+  is passed; page text is capped near 6,000 characters and treated as
+  untrusted data, never as instructions.
+- **Images are bounded** — one screenshot per request, PNG/JPEG, 280–1568 px
+  per side, ≤16 MiB; Box questions need Jev 1.14 (`jev-preview`).
 
 ## Layout
 
 ```
 src/core/            harness-agnostic decision core (no harness imports)
+src/core/image.ts    screenshot prep + box/pixel geometry (visual mode)
 src/anthropic.ts     Messages API text adapter
 src/cli.ts           cross-harness CLI (bin: jev)
 src/harness/         opencode plugin adapter + session text
