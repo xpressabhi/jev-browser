@@ -240,6 +240,9 @@ export async function choose(
     opts.fetchFn ?? fetch,
     image ? { "TypeSafe-Danger-Zone-Images": "true" } : {},
   );
+  // Phase 1 latency only: the spec's accounting contract keeps the top-level
+  // latency_ms as today's meaning, with phase 2 reported under image.
+  const phase1Latency = Date.now() - started;
   const operationAnswer = validateChoice(result.answers?.operation, operations);
   const operation = operationAnswer.choice as string;
 
@@ -313,7 +316,7 @@ export async function choose(
     raw_answers: result.answers,
     model: result.model,
     usage: result.usage,
-    latency_ms: Date.now() - started,
+    latency_ms: phase1Latency,
     ...(imageResult ? { image: imageResult } : {}),
   };
 }

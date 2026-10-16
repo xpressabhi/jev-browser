@@ -328,4 +328,19 @@ describe("box phase", () => {
     );
     assert.equal(calls.length, 1);
   });
+
+  it("top-level latency measures phase 1 only", async () => {
+    let call = 0;
+    const fetchFn: any = async (_url: string, init: any) => {
+      call += 1;
+      const body =
+        call === 1
+          ? canvasAnswers
+          : await new Promise((resolve) => setTimeout(() => resolve(boxAnswers), 40));
+      return { ok: true, status: 200, json: async () => body };
+    };
+    const d = await choose(canvasPage, "goal", [], { env, fetchFn, image: shot });
+    assert.ok(d.image!.latency_ms >= 40, "phase-2 latency includes the delay");
+    assert.ok(d.latency_ms < 40, "top-level latency excludes phase 2");
+  });
 });
