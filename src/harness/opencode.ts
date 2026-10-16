@@ -1,9 +1,32 @@
+import { readFileSync } from "node:fs";
 import { Plugin } from "@opencode/plugin";
-import { choose } from "../core/jev.ts";
+import { VISUAL_CHOICE, choose, type ChooseOptions } from "../core/jev.ts";
 import { capActions, snapshotToActions } from "../core/elements.ts";
+import { prepareImage } from "../core/image.ts";
 import { planStep } from "../core/step.ts";
 import { fieldText } from "../core/text.ts";
 import { nativeFieldText } from "./opencode-text.ts";
+
+/**
+ * Visual-mode tool params: read and validate the screenshot on the machine
+ * running the plugin, same contract as the CLI's --image flags.
+ */
+function visualOptions(input: {
+  imagePath?: string;
+  box?: "auto" | "always";
+  imageScale?: number;
+}): ChooseOptions {
+  if (!input.imagePath) {
+    if (input.box !== undefined) throw new Error("box requires imagePath");
+    if (input.imageScale !== undefined) throw new Error("imageScale requires imagePath");
+    return {};
+  }
+  return {
+    image: prepareImage(new Uint8Array(readFileSync(input.imagePath))),
+    box: input.box,
+    imageScale: input.imageScale,
+  };
+}
 
 /**
  * Thin OpenCode adapter over the harness-agnostic core.
@@ -45,7 +68,8 @@ export default Plugin.define({
         description:
           "Ask Jev (TypeSafe System One) for the next browser operation + target. " +
           "Call after snapshotting the page with chrome/brave MCP. Returns {choice, operation, target, probabilities}. " +
-          "Never invents selectors or text.",
+          "Pass imagePath for visual mode; act on nodes when present, else click image.pixel.center (or " +
+          "image.viewport) gated on image.present. Never invents selectors or text.",
         input: {
           type: "object",
           properties: {
@@ -68,19 +92,37 @@ export default Plugin.define({
               description: "Recent {action, kind, text, page_changed}",
               items: { type: "object" },
             },
+            imagePath: {
+              type: "string",
+              description:
+                "Path to a PNG/JPEG screenshot (280–1568 px per side). Enables visual mode: the screenshot joins the request state; Box questions return pixel coordinates for targets with no DOM node.",
+            },
+            box: {
+              type: "string",
+              enum: ["auto", "always"],
+              description: "auto (default) boxes only visual targets; always also boxes node targets.",
+            },
+            imageScale: {
+              type: "number",
+              description:
+                "Device scale factor of the screenshot (1 CSS px = scale image px); adds viewport coordinates for the box center.",
+            },
           },
           required: ["goal", "page"],
           additionalProperties: false,
         },
         options: { namespace: "jev", codemode: true },
         execute: async (input) => {
-          const { goal, page, history } = input as {
+          const { goal, page, history, imagePath, box, imageScale } = input as {
             goal: string;
             page: any;
             history?: any[];
+            imagePath?: string;
+            box?: "auto" | "always";
+            imageScale?: number;
           };
           try {
-            const decision = await choose(page, goal, history ?? []);
+            const decision = await choose(page, goal, history ?? [], visualOptions({ imagePath, box, imageScale }));
             return { content: JSON.stringify(decision) };
           } catch (err) {
             throw new Error(err instanceof Error ? err.message : String(err));
@@ -153,7 +195,8 @@ export default Plugin.define({
         description:
           "One full cycle in a single call: picks the operation and target and resolves the exact text for " +
           "TYPE_TEXT. Returns {choice, operation, target, text, confidence, ...} — the harness still executes " +
-          "the action. Prefer this over decide + text to halve round trips.",
+          "the action. Prefer this over decide + text to halve round trips. Pass imagePath for visual mode; " +
+          "act on nodes when present, else click image.pixel.center (or image.viewport) gated on image.present.",
         input: {
           type: "object",
           properties: {
@@ -176,26 +219,56 @@ export default Plugin.define({
               description: "Recent {action, kind, text, page_changed}",
               items: { type: "object" },
             },
+            imagePath: {
+              type: "string",
+              description:
+                "Path to a PNG/JPEG screenshot (280–1568 px per side). Enables visual mode: the screenshot joins the request state; Box questions return pixel coordinates for targets with no DOM node.",
+            },
+            box: {
+              type: "string",
+              enum: ["auto", "always"],
+              description: "auto (default) boxes only visual targets; always also boxes node targets.",
+            },
+            imageScale: {
+              type: "number",
+              description:
+                "Device scale factor of the screenshot (1 CSS px = scale image px); adds viewport coordinates for the box center.",
+            },
           },
           required: ["goal", "page"],
           additionalProperties: false,
         },
         options: { namespace: "jev", codemode: true },
         execute: async (input, toolCtx) => {
-          const { goal, page, history } = input as {
+          const { goal, page, history, imagePath, box, imageScale } = input as {
             goal: string;
             page: any;
             history?: any[];
+            imagePath?: string;
+            box?: "auto" | "always";
+            imageScale?: number;
           };
           let textModel: string | null = null;
-          const result = await planStep(page, goal, history ?? [], {
-            textFor: async (context) => {
-              const resolved = await resolveFieldText(context, toolCtx.sessionID);
-              textModel = resolved.model;
-              return resolved.text;
+          const result = await planStep(
+            page,
+            goal,
+            history ?? [],
+            {
+              textFor: async (context) => {
+                const resolved = await resolveFieldText(context, toolCtx.sessionID);
+                textModel = resolved.model;
+                return resolved.text;
+              },
             },
-          });
-          return { content: JSON.stringify({ ...result, text_model: textModel }) };
+            visualOptions({ imagePath, box, imageScale }),
+          );
+          return {
+            content: JSON.stringify({
+              ...result,
+              text_model: textModel,
+              visual: result.choice === VISUAL_CHOICE,
+            }),
+          };
         },
       });
     });
